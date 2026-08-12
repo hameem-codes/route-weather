@@ -96,7 +96,31 @@ function App() {
             pitch: 45
           }}
           style={{ width: '100%', height: '100%' }}
-          mapStyle="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
+          mapStyle={{
+            version: 8,
+            sources: {
+              'carto-dark': {
+                type: 'raster',
+                tiles: [
+                  'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+                  'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+                  'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+                  'https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
+                ],
+                tileSize: 256,
+                attribution: '&copy; <a href="https://carto.com/">CARTO</a>'
+              }
+            },
+            layers: [
+              {
+                id: 'carto-dark-layer',
+                type: 'raster',
+                source: 'carto-dark',
+                minzoom: 0,
+                maxzoom: 22
+              }
+            ]
+          }}
         >
           {/* Glowing Route Line */}
           <Source id="route" type="geojson" data={geojson as any}>
