@@ -15,7 +15,11 @@ import {
   Drop,
   Eye,
   CloudCheck,
-  Warning
+  Warning,
+  ShareNetwork,
+  Image as ImageIcon,
+  Link,
+  Export
 } from '@phosphor-icons/react'
 import * as maplibregl from 'maplibre-gl';
 import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
@@ -25,6 +29,7 @@ import length from '@turf/length';
 import along from '@turf/along';
 import lineSlice from '@turf/line-slice';
 import { point } from '@turf/helpers';
+import { toPng } from 'html-to-image';
 
 // Fix for Vite production build: explicitly set the worker URL so it resolves correctly
 maplibregl.setWorkerUrl(mapLibreWorkerUrl);
@@ -121,6 +126,7 @@ const rasterMapStyle = {
 };
 
 function App() {
+  const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapRef>(null);
   
   // Input State
@@ -141,26 +147,31 @@ function App() {
   const [vehiclePosition, setVehiclePosition] = useState<[number, number] | null>(null);
   const [progress, setProgress] = useState(0); // 0 to 1
 
-  // Marker Interaction State
+  // Marker & Share Interaction State
   const [hoveredMarkerId, setHoveredMarkerId] = useState<string | null>(null);
   const [selectedMarker, setSelectedMarker] = useState<any | null>(null);
+  const [showShareMenu, setShowShareMenu] = useState(false);
 
-  const calculateRoute = async () => {
+  const calculateRoute = async (overrideOrigin?: string, overrideDest?: string) => {
     setIsLoading(true);
     setRouteState('hidden');
     setSelectedMarker(null);
     setHoveredMarkerId(null);
+    setShowShareMenu(false);
+    
+    const oInput = overrideOrigin || originInput;
+    const dInput = overrideDest || destInput;
     
     try {
       // 1. Geocode Origin via Nominatim
-      const originRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(originInput)}&format=json&limit=1`);
+      const originRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(oInput)}&format=json&limit=1`);
       const originData = await originRes.json();
       if (!originData.length) throw new Error("Origin not found");
       const originCoords = [parseFloat(originData[0].lon), parseFloat(originData[0].lat)];
 
       // 2. Geocode Destination via Nominatim (1s delay to strictly respect 1 request/sec rate limit)
       await new Promise(r => setTimeout(r, 1000));
-      const destRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(destInput)}&format=json&limit=1`);
+      const destRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(dInput)}&format=json&limit=1`);
       const destData = await destRes.json();
       if (!destData.length) throw new Error("Destination not found");
       const destCoords = [parseFloat(destData[0].lon), parseFloat(destData[0].lat)];
@@ -185,8 +196,8 @@ function App() {
         const pt = along(routeFeature, dist, { units: 'miles' });
         
         let locName = `Checkpoint ${i}`;
-        if (i === 0) locName = originInput.split(',')[0];
-        if (i === numSegments - 1) locName = destInput.split(',')[0];
+        if (i === 0) locName = oInput.split(',')[0];
+        if (i === numSegments - 1) locName = dInput.split(',')[0];
         
         segments.push({
           id: `seg_${i}`,
@@ -223,6 +234,12 @@ function App() {
       setRouteState('animating');
       setProgress(0);
       setVehiclePosition(segments[0].coordinates as [number, number]);
+
+      // Update URL with search params for sharing
+      const url = new URL(window.location.href);
+      url.searchParams.set('origin', oInput);
+      url.searchParams.set('dest', dInput);
+      window.history.replaceState({}, '', url.toString());
 
     } catch (e: any) {
       console.error(e);
@@ -268,15 +285,71 @@ function App() {
     return () => cancelAnimationFrame(animationFrame);
   }, [routeState, routeData]);
 
-  // Initial load effect to show SF to Tahoe
+  // Initial load effect to parse URL params or show default
   useEffect(() => {
-    if (!routeData && !isLoading && routeState === 'hidden') {
+    const params = new URLSearchParams(window.location.search);
+    const originParam = params.get('origin');
+    const destParam = params.get('dest');
+
+    if (originParam && destParam) {
+      setOriginInput(originParam);
+      setDestInput(destParam);
+      calculateRoute(originParam, destParam);
+    } else if (!routeData && !isLoading && routeState === 'hidden') {
       calculateRoute();
     }
   }, []);
 
+  const handleCopyLink = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('origin', originInput);
+    url.searchParams.set('dest', destInput);
+    navigator.clipboard.writeText(url.toString());
+    alert("Map link copied to clipboard!");
+    setShowShareMenu(false);
+  };
+
+  const handleDownloadImage = async () => {
+    if (!containerRef.current) return;
+    try {
+      setShowShareMenu(false);
+      // Let React unmount the menu before snapshotting
+      await new Promise(r => setTimeout(r, 100));
+      
+      const dataUrl = await toPng(containerRef.current, { cacheBust: true });
+      const link = document.createElement('a');
+      link.download = `RouteWeather-${originInput.split(',')[0]}-to-${destInput.split(',')[0]}.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch (err) {
+      console.error(err);
+      alert("Failed to generate image.");
+    }
+  };
+
+  const handleNativeShare = async () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('origin', originInput);
+    url.searchParams.set('dest', destInput);
+    
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'RouteWeather',
+          text: `Check out my route from ${originInput} to ${destInput}`,
+          url: url.toString()
+        });
+      } catch (err) {
+        console.error("Error sharing", err);
+      }
+    } else {
+      alert("Native sharing not supported on this browser. Use Copy Map Link instead.");
+    }
+    setShowShareMenu(false);
+  };
+
   return (
-    <div className="relative w-full h-screen bg-zinc-950 overflow-hidden text-zinc-50 font-sans flex">
+    <div ref={containerRef} className="relative w-full h-screen bg-zinc-950 overflow-hidden text-zinc-50 font-sans flex">
       {/* Interactive Map */}
       <div className="absolute inset-0 z-0">
         <Map
@@ -288,6 +361,8 @@ function App() {
             zoom: 7.5,
             pitch: 45
           }}
+          // @ts-ignore - maplibre init option for html-to-image
+          preserveDrawingBuffer={true} // crucial for html-to-image to work on WebGL canvases
           style={{ width: '100%', height: '100%' }}
           mapStyle={rasterMapStyle as any}
         >
@@ -446,9 +521,40 @@ function App() {
       <div className="absolute top-0 left-0 w-full md:w-[400px] h-full flex flex-col p-4 md:p-6 z-10 pointer-events-none">
         
         {/* Input Panel */}
-        <div className="pointer-events-auto bg-zinc-900/80 backdrop-blur-xl border border-zinc-800 rounded-2xl p-5 mb-4 shadow-2xl flex-shrink-0">
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-3 bg-zinc-800/50 rounded-xl px-4 py-3 border border-transparent focus-within:border-zinc-700 transition-colors">
+        <div className="pointer-events-auto bg-zinc-900/80 backdrop-blur-xl border border-zinc-800 rounded-2xl p-5 mb-4 shadow-2xl flex-shrink-0 relative">
+          
+          {/* Share Button & Dropdown */}
+          <div className="absolute top-4 right-4 z-20">
+            <button 
+              onClick={() => setShowShareMenu(!showShareMenu)}
+              className={`p-2 rounded-xl transition-colors ${showShareMenu ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/50'}`}
+              title="Share Route"
+            >
+              <ShareNetwork size={20} />
+            </button>
+            
+            {showShareMenu && (
+              <div className="absolute right-0 mt-2 w-48 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+                <button onClick={handleDownloadImage} className="w-full text-left px-4 py-3 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 flex items-center gap-3 transition-colors">
+                  <ImageIcon size={18} />
+                  Share Image
+                </button>
+                <div className="h-px bg-zinc-800/50 mx-2"></div>
+                <button onClick={handleCopyLink} className="w-full text-left px-4 py-3 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 flex items-center gap-3 transition-colors">
+                  <Link size={18} />
+                  Copy Map Link
+                </button>
+                <div className="h-px bg-zinc-800/50 mx-2"></div>
+                <button onClick={handleNativeShare} className="w-full text-left px-4 py-3 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 flex items-center gap-3 transition-colors">
+                  <Export size={18} />
+                  Share
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-3 mt-1">
+            <div className="flex items-center gap-3 bg-zinc-800/50 rounded-xl px-4 py-3 border border-transparent focus-within:border-zinc-700 transition-colors mr-10">
               <MapPin size={20} className="text-zinc-400" />
               <input 
                 type="text" 
@@ -481,7 +587,7 @@ function App() {
               </div>
             </div>
             <button 
-              onClick={calculateRoute}
+              onClick={() => calculateRoute()}
               disabled={isLoading || routeState === 'animating'}
               className="bg-zinc-100 text-zinc-900 font-medium px-4 py-2 rounded-full text-sm hover:bg-white transition-colors active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
