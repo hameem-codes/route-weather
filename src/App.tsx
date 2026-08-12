@@ -338,6 +338,7 @@ function App() {
       const uiDataUrl = await toPng(containerRef.current, { 
         cacheBust: true, 
         pixelRatio: window.devicePixelRatio || 2,
+        backgroundColor: 'rgba(0,0,0,0)', // Ensure html-to-image uses transparent background
         filter: (node: HTMLElement) => {
           // Exclude the map canvas from being re-rendered by html-to-image
           if (node.tagName === 'CANVAS' && node.classList.contains('maplibregl-canvas')) {
@@ -434,7 +435,7 @@ function App() {
   };
 
   return (
-    <div ref={containerRef} className="relative w-full h-screen bg-zinc-950 overflow-hidden text-zinc-50 font-sans flex">
+    <div ref={containerRef} className={`relative w-full h-screen overflow-hidden text-zinc-50 font-sans flex ${isSnapshotMode ? 'bg-transparent' : 'bg-zinc-950'}`}>
       {/* Interactive Map */}
       <div className="absolute inset-0 z-0">
         <Map
