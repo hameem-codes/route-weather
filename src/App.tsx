@@ -125,6 +125,19 @@ const rasterMapStyle = {
   ]
 };
 
+function dataURLtoFile(dataurl: string, filename: string) {
+    let arr = dataurl.split(','),
+        mime = arr[0].match(/:(.*?);/)![1],
+        bstr = atob(arr[1]), 
+        n = bstr.length, 
+        u8arr = new Uint8Array(n);
+        
+    while(n--){
+        u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new File([u8arr], filename, {type:mime});
+}
+
 function App() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapRef>(null);
@@ -151,6 +164,7 @@ function App() {
   const [hoveredMarkerId, setHoveredMarkerId] = useState<string | null>(null);
   const [selectedMarker, setSelectedMarker] = useState<any | null>(null);
   const [showShareMenu, setShowShareMenu] = useState(false);
+  const [isSnapshotMode, setIsSnapshotMode] = useState(false);
 
   const calculateRoute = async (overrideOrigin?: string, overrideDest?: string) => {
     setIsLoading(true);
@@ -309,14 +323,24 @@ function App() {
     setShowShareMenu(false);
   };
 
-  const handleDownloadImage = async () => {
-    if (!containerRef.current) return;
+  const generateShareImage = async () => {
+    if (!containerRef.current) return null;
+    setShowShareMenu(false);
+    setIsSnapshotMode(true);
+    // Wait for React to render snapshot UI and map to settle
+    await new Promise(r => setTimeout(r, 150)); 
     try {
-      setShowShareMenu(false);
-      // Let React unmount the menu before snapshotting
-      await new Promise(r => setTimeout(r, 100));
-      
-      const dataUrl = await toPng(containerRef.current, { cacheBust: true });
+      const dataUrl = await toPng(containerRef.current, { cacheBust: true, pixelRatio: 2 });
+      return dataUrl;
+    } finally {
+      setIsSnapshotMode(false);
+    }
+  };
+
+  const handleDownloadImage = async () => {
+    try {
+      const dataUrl = await generateShareImage();
+      if (!dataUrl) return;
       const link = document.createElement('a');
       link.download = `RouteWeather-${originInput.split(',')[0]}-to-${destInput.split(',')[0]}.png`;
       link.href = dataUrl;
@@ -332,20 +356,38 @@ function App() {
     url.searchParams.set('origin', originInput);
     url.searchParams.set('dest', destInput);
     
-    if (navigator.share) {
-      try {
-        await navigator.share({
+    setShowShareMenu(false);
+
+    try {
+      const dataUrl = await generateShareImage();
+      if (!dataUrl) return;
+
+      const file = dataURLtoFile(dataUrl, 'routeweather.png');
+      const shareData = {
           title: 'RouteWeather',
           text: `Check out my route from ${originInput} to ${destInput}`,
-          url: url.toString()
-        });
-      } catch (err) {
-        console.error("Error sharing", err);
+          url: url.toString(),
+          files: [file]
+      };
+
+      if (navigator.canShare && navigator.canShare(shareData)) {
+          await navigator.share(shareData);
+      } else if (navigator.share) {
+          // fallback without file
+          await navigator.share({
+             title: shareData.title,
+             text: shareData.text,
+             url: shareData.url
+          });
+      } else {
+          alert("Native sharing not supported on this browser. Use Copy Map Link instead.");
       }
-    } else {
-      alert("Native sharing not supported on this browser. Use Copy Map Link instead.");
+    } catch (err: any) {
+        if (err.name !== 'AbortError') {
+            console.error("Error sharing", err);
+            // Optional: fallback to download if share API fails
+        }
     }
-    setShowShareMenu(false);
   };
 
   return (
@@ -363,6 +405,7 @@ function App() {
           }}
           // @ts-ignore - maplibre init option for html-to-image
           preserveDrawingBuffer={true} // crucial for html-to-image to work on WebGL canvases
+          interactive={!isSnapshotMode} // Disable interactions during snapshot
           style={{ width: '100%', height: '100%' }}
           mapStyle={rasterMapStyle as any}
         >
@@ -430,8 +473,8 @@ function App() {
             );
           })}
 
-          {/* Vehicle Indicator */}
-          {vehiclePosition && (
+          {/* Vehicle Indicator - Hidden in Snapshot Mode */}
+          {!isSnapshotMode && vehiclePosition && (
             <Marker
               longitude={vehiclePosition[0]}
               latitude={vehiclePosition[1]}
@@ -454,7 +497,7 @@ function App() {
             
             // Determine if marker should be visible
             let isVisible = false;
-            if (routeState === 'visible') {
+            if (routeState === 'visible' || isSnapshotMode) {
               isVisible = true; // Show final state
             } else if (routeState === 'animating') {
               // During animation, only show if vehicle has passed it
@@ -473,11 +516,11 @@ function App() {
                 longitude={seg.coordinates[0]}
                 latitude={seg.coordinates[1]}
                 anchor="bottom"
-                style={{ zIndex: isHovered || isSelected ? 50 : 30 }}
+                style={{ zIndex: (isHovered || isSelected) && !isSnapshotMode ? 50 : 30 }}
               >
                 <div className="relative">
-                  {/* Tooltip (Hover State) */}
-                  {isHovered && !isSelected && (
+                  {/* Tooltip (Hover State) - Hidden in Snapshot Mode */}
+                  {!isSnapshotMode && isHovered && !isSelected && (
                     <div className="absolute bottom-full mb-2 -translate-x-1/2 left-1/2 flex flex-col items-center animate-in fade-in zoom-in-95 duration-150 pointer-events-none z-50">
                       <div className="bg-zinc-900/95 backdrop-blur-xl border border-zinc-700/50 rounded-xl p-3 shadow-2xl min-w-[140px] text-center">
                         <div className="font-semibold text-sm mb-1 truncate max-w-[120px]">{seg.locationName}</div>
@@ -493,20 +536,21 @@ function App() {
 
                   {/* Marker Pin */}
                   <div 
-                    onMouseEnter={() => setHoveredMarkerId(seg.id)}
-                    onMouseLeave={() => setHoveredMarkerId(null)}
+                    onMouseEnter={() => !isSnapshotMode && setHoveredMarkerId(seg.id)}
+                    onMouseLeave={() => !isSnapshotMode && setHoveredMarkerId(null)}
                     onClick={(e) => {
+                      if (isSnapshotMode) return;
                       e.stopPropagation();
                       setSelectedMarker(seg);
                     }}
-                    className={`flex flex-col items-center justify-center -translate-y-2 cursor-pointer transition-transform duration-300
+                    className={`flex flex-col items-center justify-center -translate-y-2 transition-transform duration-300
                       ${isSafe ? 'text-blue-400' : isWarning ? 'text-amber-400' : 'text-fuchsia-400'}
-                      ${isHovered || isSelected ? 'scale-125' : 'hover:scale-110'}
+                      ${(isHovered || isSelected) && !isSnapshotMode ? 'scale-125' : (!isSnapshotMode ? 'hover:scale-110 cursor-pointer' : '')}
                       animate-in fade-in zoom-in`}
                   >
                     <div className={`bg-zinc-900/90 backdrop-blur-md border rounded-lg p-1.5 shadow-lg flex items-center justify-center mb-1 transition-colors
-                      ${isSelected ? 'border-current' : 'border-zinc-700/50'}`}>
-                       <seg.weather.icon size={22} weight={isSelected ? "fill" : "duotone"} />
+                      ${isSelected && !isSnapshotMode ? 'border-current' : 'border-zinc-700/50'}`}>
+                       <seg.weather.icon size={22} weight={isSelected && !isSnapshotMode ? "fill" : "duotone"} />
                     </div>
                     <div className="w-1.5 h-1.5 rounded-full bg-current shadow-[0_0_10px_currentColor]"></div>
                   </div>
@@ -517,157 +561,186 @@ function App() {
         </Map>
       </div>
 
-      {/* Sidebar Dashboard (Layered on top of map) */}
-      <div className="absolute top-0 left-0 w-full md:w-[400px] h-full flex flex-col p-4 md:p-6 z-10 pointer-events-none">
-        
-        {/* Input Panel */}
-        <div className="pointer-events-auto bg-zinc-900/80 backdrop-blur-xl border border-zinc-800 rounded-2xl p-5 mb-4 shadow-2xl flex-shrink-0 relative">
-          
-          {/* Share Button & Dropdown */}
-          <div className="absolute top-4 right-4 z-20">
-            <button 
-              onClick={() => setShowShareMenu(!showShareMenu)}
-              className={`p-2 rounded-xl transition-colors ${showShareMenu ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/50'}`}
-              title="Share Route"
-            >
-              <ShareNetwork size={20} />
-            </button>
-            
-            {showShareMenu && (
-              <div className="absolute right-0 mt-2 w-48 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
-                <button onClick={handleDownloadImage} className="w-full text-left px-4 py-3 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 flex items-center gap-3 transition-colors">
-                  <ImageIcon size={18} />
-                  Share Image
-                </button>
-                <div className="h-px bg-zinc-800/50 mx-2"></div>
-                <button onClick={handleCopyLink} className="w-full text-left px-4 py-3 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 flex items-center gap-3 transition-colors">
-                  <Link size={18} />
-                  Copy Map Link
-                </button>
-                <div className="h-px bg-zinc-800/50 mx-2"></div>
-                <button onClick={handleNativeShare} className="w-full text-left px-4 py-3 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 flex items-center gap-3 transition-colors">
-                  <Export size={18} />
-                  Share
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-3 mt-1">
-            <div className="flex items-center gap-3 bg-zinc-800/50 rounded-xl px-4 py-3 border border-transparent focus-within:border-zinc-700 transition-colors mr-10">
-              <MapPin size={20} className="text-zinc-400" />
-              <input 
-                type="text" 
-                value={originInput}
-                onChange={e => setOriginInput(e.target.value)}
-                className="bg-transparent border-none outline-none text-sm w-full font-medium" 
-                placeholder="Starting location..."
-              />
-            </div>
-            <div className="w-[1px] h-3 bg-zinc-700 ml-6"></div>
-            <div className="flex items-center gap-3 bg-zinc-800/50 rounded-xl px-4 py-3 border border-transparent focus-within:border-zinc-700 transition-colors">
-              <Flag size={20} className="text-zinc-400" />
-              <input 
-                type="text" 
-                value={destInput}
-                onChange={e => setDestInput(e.target.value)}
-                className="bg-transparent border-none outline-none text-sm w-full font-medium" 
-                placeholder="Destination..."
-              />
+      {/* Snapshot Overlay Graphic (Only visible in Snapshot Mode) */}
+      {isSnapshotMode && routeData && (
+        <div className="absolute inset-0 z-20 pointer-events-none flex flex-col justify-between p-8 md:p-12">
+          <div className="bg-zinc-950/80 backdrop-blur-2xl border border-zinc-800/50 rounded-3xl p-6 md:p-8 max-w-lg shadow-2xl self-start">
+            <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-white mb-2">
+              {originInput.split(',')[0]} <span className="text-zinc-600 font-normal mx-2">to</span> {destInput.split(',')[0]}
+            </h1>
+            <div className="flex items-center gap-6 mt-4">
+               <div>
+                 <div className="text-sm font-medium text-zinc-400 mb-0.5 uppercase tracking-wider">Est. Travel Time</div>
+                 <div className="text-2xl font-bold text-white font-mono">{Math.floor(routeData.totalTimeMins / 60)}h {routeData.totalTimeMins % 60}m</div>
+               </div>
+               <div className="w-px h-10 bg-zinc-800"></div>
+               <div>
+                 <div className="text-sm font-medium text-zinc-400 mb-0.5 uppercase tracking-wider">Distance</div>
+                 <div className="text-2xl font-bold text-white font-mono">{Math.round(routeData.totalDistanceMi)} mi</div>
+               </div>
             </div>
           </div>
           
-          <div className="mt-5 pt-4 border-t border-zinc-800 flex justify-between items-end">
-            <div>
-              <div className="text-3xl font-bold tracking-tight">
-                {routeData ? `${Math.floor(routeData.totalTimeMins / 60)}h ${routeData.totalTimeMins % 60}m` : '--h --m'}
-              </div>
-              <div className="text-sm text-zinc-400 font-mono mt-1">
-                {routeData ? `${Math.round(routeData.totalDistanceMi)} mi` : '-- mi'}
-              </div>
-            </div>
-            <button 
-              onClick={() => calculateRoute()}
-              disabled={isLoading || routeState === 'animating'}
-              className="bg-zinc-100 text-zinc-900 font-medium px-4 py-2 rounded-full text-sm hover:bg-white transition-colors active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-            >
-              {isLoading ? (
-                <>
-                  <SpinnerGap size={16} className="animate-spin" />
-                  Routing...
-                </>
-              ) : routeState === 'animating' ? 'Navigating...' : 'Leave Now'}
-            </button>
+          <div className="self-end bg-zinc-950/80 backdrop-blur-md border border-zinc-800/50 rounded-full px-5 py-2 flex items-center gap-2 shadow-xl">
+             <div className="w-3 h-3 rounded-full bg-blue-500 animate-pulse shadow-[0_0_10px_rgba(59,130,246,0.8)]"></div>
+             <span className="font-bold tracking-tight text-white">RouteWeather</span>
           </div>
         </div>
+      )}
 
-        {/* Timeline (Scrollable) */}
-        {routeData && (
-          <div className="pointer-events-auto flex-1 overflow-y-auto no-scrollbar bg-zinc-900/80 backdrop-blur-xl border border-zinc-800 rounded-2xl p-5 shadow-2xl relative">
-            <h2 className="text-sm font-semibold uppercase tracking-widest text-zinc-500 mb-6 px-2 sticky top-0 bg-zinc-900/90 backdrop-blur py-2 z-10 -mt-2">Weather Route</h2>
+      {/* Sidebar Dashboard (Hidden in Snapshot Mode) */}
+      {!isSnapshotMode && (
+        <div className="absolute top-0 left-0 w-full md:w-[400px] h-full flex flex-col p-4 md:p-6 z-10 pointer-events-none">
+          
+          {/* Input Panel */}
+          <div className="pointer-events-auto bg-zinc-900/80 backdrop-blur-xl border border-zinc-800 rounded-2xl p-5 mb-4 shadow-2xl flex-shrink-0 relative">
             
-            <div className="relative pl-6 pb-4">
-              {/* Connecting line */}
-              <div className="absolute top-4 bottom-4 left-[11px] w-[2px] bg-zinc-800 rounded-full"></div>
+            {/* Share Button & Dropdown */}
+            <div className="absolute top-4 right-4 z-20">
+              <button 
+                onClick={() => setShowShareMenu(!showShareMenu)}
+                className={`p-2 rounded-xl transition-colors ${showShareMenu ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/50'}`}
+                title="Share Route"
+              >
+                <ShareNetwork size={20} />
+              </button>
               
-              <div className="flex flex-col gap-8">
-                {routeData.segments.map((seg) => {
-                  const Icon = seg.weather.icon;
-                  const isSafe = seg.weather.severity === 'safe';
-                  const isWarning = seg.weather.severity === 'warning';
-                  
-                  // Dim timeline items if they haven't been reached yet during animation
-                  const currentDist = progress * routeData.totalDistanceMi;
-                  const isReached = routeState === 'visible' || currentDist >= seg.distanceFromStartMi;
+              {showShareMenu && (
+                <div className="absolute right-0 mt-2 w-48 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+                  <button onClick={handleDownloadImage} className="w-full text-left px-4 py-3 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 flex items-center gap-3 transition-colors">
+                    <ImageIcon size={18} />
+                    Share Image
+                  </button>
+                  <div className="h-px bg-zinc-800/50 mx-2"></div>
+                  <button onClick={handleCopyLink} className="w-full text-left px-4 py-3 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 flex items-center gap-3 transition-colors">
+                    <Link size={18} />
+                    Copy Map Link
+                  </button>
+                  <div className="h-px bg-zinc-800/50 mx-2"></div>
+                  <button onClick={handleNativeShare} className="w-full text-left px-4 py-3 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 flex items-center gap-3 transition-colors">
+                    <Export size={18} />
+                    Share
+                  </button>
+                </div>
+              )}
+            </div>
 
-                  return (
-                    <div key={seg.id} className={`relative transition-opacity duration-500 ${isReached ? 'opacity-100' : 'opacity-30'}`}>
-                      {/* Node */}
-                      <div className={`absolute -left-6 w-3 h-3 rounded-full border-2 border-zinc-900 mt-1.5 z-10 
-                        ${isSafe ? 'bg-blue-500' : isWarning ? 'bg-amber-500' : 'bg-fuchsia-500'}`}>
-                      </div>
-
-                      <div className="flex flex-col gap-1">
-                        <div className="flex justify-between items-baseline">
-                          <h3 className="font-medium text-zinc-100 truncate pr-2 max-w-[150px]">{seg.locationName}</h3>
-                          <span className="text-xs font-mono text-zinc-500 flex-shrink-0">+{seg.timeFromStartMins}m</span>
-                        </div>
-                        
-                        <div className="flex items-center gap-4 mt-2">
-                          <div className="flex items-center gap-2">
-                            <Icon size={24} className={isSafe ? 'text-blue-400' : isWarning ? 'text-amber-400' : 'text-fuchsia-400'} weight="duotone" />
-                            <span className="font-mono text-lg">{seg.weather.temperatureF}°</span>
-                          </div>
-                          <span className="text-sm text-zinc-400">{seg.weather.condition}</span>
-                        </div>
-
-                        {seg.alert && (
-                          <div className={`mt-3 inline-flex items-center px-3 py-1 rounded-full text-xs font-medium self-start
-                            ${isWarning ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' : 
-                            'bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/20'}`}>
-                            {seg.alert}
-                          </div>
-                        )}
-
-                        {/* Interactive button to show details */}
-                        <button 
-                          onClick={() => setSelectedMarker(seg)}
-                          className="mt-3 text-xs font-medium text-zinc-400 hover:text-zinc-200 self-start transition-colors px-2 py-1 -ml-2 rounded-md hover:bg-zinc-800/50"
-                        >
-                          More info
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })}
+            <div className="flex flex-col gap-3 mt-1">
+              <div className="flex items-center gap-3 bg-zinc-800/50 rounded-xl px-4 py-3 border border-transparent focus-within:border-zinc-700 transition-colors mr-10">
+                <MapPin size={20} className="text-zinc-400" />
+                <input 
+                  type="text" 
+                  value={originInput}
+                  onChange={e => setOriginInput(e.target.value)}
+                  className="bg-transparent border-none outline-none text-sm w-full font-medium" 
+                  placeholder="Starting location..."
+                />
+              </div>
+              <div className="w-[1px] h-3 bg-zinc-700 ml-6"></div>
+              <div className="flex items-center gap-3 bg-zinc-800/50 rounded-xl px-4 py-3 border border-transparent focus-within:border-zinc-700 transition-colors">
+                <Flag size={20} className="text-zinc-400" />
+                <input 
+                  type="text" 
+                  value={destInput}
+                  onChange={e => setDestInput(e.target.value)}
+                  className="bg-transparent border-none outline-none text-sm w-full font-medium" 
+                  placeholder="Destination..."
+                />
               </div>
             </div>
+            
+            <div className="mt-5 pt-4 border-t border-zinc-800 flex justify-between items-end">
+              <div>
+                <div className="text-3xl font-bold tracking-tight">
+                  {routeData ? `${Math.floor(routeData.totalTimeMins / 60)}h ${routeData.totalTimeMins % 60}m` : '--h --m'}
+                </div>
+                <div className="text-sm text-zinc-400 font-mono mt-1">
+                  {routeData ? `${Math.round(routeData.totalDistanceMi)} mi` : '-- mi'}
+                </div>
+              </div>
+              <button 
+                onClick={() => calculateRoute()}
+                disabled={isLoading || routeState === 'animating'}
+                className="bg-zinc-100 text-zinc-900 font-medium px-4 py-2 rounded-full text-sm hover:bg-white transition-colors active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {isLoading ? (
+                  <>
+                    <SpinnerGap size={16} className="animate-spin" />
+                    Routing...
+                  </>
+                ) : routeState === 'animating' ? 'Navigating...' : 'Leave Now'}
+              </button>
+            </div>
           </div>
-        )}
-      </div>
 
-      {/* Detailed Weather Modal */}
-      {selectedMarker && (
+          {/* Timeline (Scrollable) */}
+          {routeData && (
+            <div className="pointer-events-auto flex-1 overflow-y-auto no-scrollbar bg-zinc-900/80 backdrop-blur-xl border border-zinc-800 rounded-2xl p-5 shadow-2xl relative">
+              <h2 className="text-sm font-semibold uppercase tracking-widest text-zinc-500 mb-6 px-2 sticky top-0 bg-zinc-900/90 backdrop-blur py-2 z-10 -mt-2">Weather Route</h2>
+              
+              <div className="relative pl-6 pb-4">
+                {/* Connecting line */}
+                <div className="absolute top-4 bottom-4 left-[11px] w-[2px] bg-zinc-800 rounded-full"></div>
+                
+                <div className="flex flex-col gap-8">
+                  {routeData.segments.map((seg) => {
+                    const Icon = seg.weather.icon;
+                    const isSafe = seg.weather.severity === 'safe';
+                    const isWarning = seg.weather.severity === 'warning';
+                    
+                    // Dim timeline items if they haven't been reached yet during animation
+                    const currentDist = progress * routeData.totalDistanceMi;
+                    const isReached = routeState === 'visible' || currentDist >= seg.distanceFromStartMi;
+
+                    return (
+                      <div key={seg.id} className={`relative transition-opacity duration-500 ${isReached ? 'opacity-100' : 'opacity-30'}`}>
+                        {/* Node */}
+                        <div className={`absolute -left-6 w-3 h-3 rounded-full border-2 border-zinc-900 mt-1.5 z-10 
+                          ${isSafe ? 'bg-blue-500' : isWarning ? 'bg-amber-500' : 'bg-fuchsia-500'}`}>
+                        </div>
+
+                        <div className="flex flex-col gap-1">
+                          <div className="flex justify-between items-baseline">
+                            <h3 className="font-medium text-zinc-100 truncate pr-2 max-w-[150px]">{seg.locationName}</h3>
+                            <span className="text-xs font-mono text-zinc-500 flex-shrink-0">+{seg.timeFromStartMins}m</span>
+                          </div>
+                          
+                          <div className="flex items-center gap-4 mt-2">
+                            <div className="flex items-center gap-2">
+                              <Icon size={24} className={isSafe ? 'text-blue-400' : isWarning ? 'text-amber-400' : 'text-fuchsia-400'} weight="duotone" />
+                              <span className="font-mono text-lg">{seg.weather.temperatureF}°</span>
+                            </div>
+                            <span className="text-sm text-zinc-400">{seg.weather.condition}</span>
+                          </div>
+
+                          {seg.alert && (
+                            <div className={`mt-3 inline-flex items-center px-3 py-1 rounded-full text-xs font-medium self-start
+                              ${isWarning ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' : 
+                              'bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/20'}`}>
+                              {seg.alert}
+                            </div>
+                          )}
+
+                          {/* Interactive button to show details */}
+                          <button 
+                            onClick={() => setSelectedMarker(seg)}
+                            className="mt-3 text-xs font-medium text-zinc-400 hover:text-zinc-200 self-start transition-colors px-2 py-1 -ml-2 rounded-md hover:bg-zinc-800/50"
+                          >
+                            More info
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Detailed Weather Modal (Hidden in Snapshot Mode) */}
+      {!isSnapshotMode && selectedMarker && (
         <div 
           className="absolute inset-0 z-50 flex items-center justify-center p-4 md:p-8 bg-black/40 backdrop-blur-sm pointer-events-auto animate-in fade-in duration-200"
           onClick={() => setSelectedMarker(null)}
