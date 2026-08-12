@@ -8,7 +8,7 @@ import {
   Snowflake,
   CloudSnow
 } from '@phosphor-icons/react'
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import Map, { Source, Layer, Marker } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
