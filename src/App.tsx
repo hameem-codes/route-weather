@@ -444,27 +444,19 @@ function App() {
       const file = dataURLtoFile(dataUrl, 'routeweather.png');
       const shareData = {
           title: 'RouteWeather',
-          text: `Check out my route from ${originInput} to ${destInput}`,
+          text: `Check out my RouteWeather trip`,
           url: url.toString(),
           files: [file]
       };
 
       if (navigator.canShare && navigator.canShare(shareData)) {
           await navigator.share(shareData);
-      } else if (navigator.share) {
-          // fallback without file
-          await navigator.share({
-             title: shareData.title,
-             text: shareData.text,
-             url: shareData.url
-          });
       } else {
-          alert("Native sharing not supported on this browser. Use Copy Map Link instead.");
+          alert("Your device doesn't support sharing the image and link together. Please use Download Image or Copy Map Link instead.");
       }
     } catch (err: any) {
         if (err.name !== 'AbortError') {
             console.error("Error sharing", err);
-            // Optional: fallback to download if share API fails
         }
     }
   };
