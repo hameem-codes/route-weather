@@ -12,7 +12,8 @@ import {
 } from '@phosphor-icons/react'
 import * as maplibregl from 'maplibre-gl';
 import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
-import Map, { Source, Layer, Marker, MapRef } from 'react-map-gl/maplibre';
+import Map, { Source, Layer, Marker } from 'react-map-gl/maplibre';
+import type { MapRef } from 'react-map-gl/maplibre';
 import length from '@turf/length';
 import along from '@turf/along';
 import { lineString } from '@turf/helpers';
