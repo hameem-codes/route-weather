@@ -470,7 +470,14 @@ function App() {
   };
 
   return (
-    <div ref={containerRef} className={`relative w-full h-screen overflow-hidden text-zinc-50 font-sans flex ${isSnapshotMode ? 'bg-transparent pointer-events-none' : 'bg-zinc-950'}`}>
+    <div ref={containerRef} className={`relative w-full h-screen overflow-hidden text-zinc-50 font-sans flex ${isSnapshotMode ? 'bg-transparent pointer-events-none snapshot-mode' : 'bg-zinc-950'}`}>
+      <style>
+        {isSnapshotMode && `
+          .maplibregl-ctrl-bottom-left, .maplibregl-ctrl-bottom-right, .maplibregl-ctrl-top-left, .maplibregl-ctrl-top-right {
+            display: none !important;
+          }
+        `}
+      </style>
       {/* Interactive Map */}
       <div className={`absolute inset-0 z-0 ${isSnapshotMode ? 'pointer-events-none' : ''}`}>
         <Map
@@ -482,8 +489,7 @@ function App() {
             zoom: 7.5,
             pitch: 45
           }}
-          // @ts-ignore - maplibre init option for html-to-image
-          preserveDrawingBuffer={true} // crucial for html-to-image to work on WebGL canvases
+          canvasContextAttributes={{ preserveDrawingBuffer: true }} // MapLibre GL JS configuration for exporting canvas
           style={{ width: '100%', height: '100%' }}
           mapStyle={rasterMapStyle as any}
         >
