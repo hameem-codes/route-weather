@@ -125,18 +125,7 @@ const rasterMapStyle = {
   ]
 };
 
-function dataURLtoFile(dataurl: string, filename: string) {
-    let arr = dataurl.split(','),
-        mime = arr[0].match(/:(.*?);/)![1],
-        bstr = atob(arr[1]), 
-        n = bstr.length, 
-        u8arr = new Uint8Array(n);
-        
-    while(n--){
-        u8arr[n] = bstr.charCodeAt(n);
-    }
-    return new File([u8arr], filename, {type:mime});
-}
+
 
 function App() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -438,20 +427,16 @@ function App() {
     setShowShareMenu(false);
 
     try {
-      const dataUrl = await generateShareImage();
-      if (!dataUrl) return;
-
-      const file = dataURLtoFile(dataUrl, 'routeweather.png');
       const shareData = {
           title: 'RouteWeather',
-          text: `Check out my RouteWeather trip\n\n${url.toString()}`,
-          files: [file]
+          text: `Check out my RouteWeather trip`,
+          url: url.toString()
       };
 
       if (navigator.canShare && navigator.canShare(shareData)) {
           await navigator.share(shareData);
       } else {
-          alert("Your device doesn't support sharing the image and link together. Please use Download Image or Copy Map Link instead.");
+          alert("Your device doesn't support native sharing. Please use Download Image or Copy Map Link instead.");
       }
     } catch (err: any) {
         if (err.name !== 'AbortError') {
