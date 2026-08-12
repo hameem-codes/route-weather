@@ -324,14 +324,57 @@ function App() {
   };
 
   const generateShareImage = async () => {
-    if (!containerRef.current) return null;
+    if (!containerRef.current || !mapRef.current) return null;
     setShowShareMenu(false);
     setIsSnapshotMode(true);
     // Wait for React to render snapshot UI and map to settle
     await new Promise(r => setTimeout(r, 150)); 
     try {
-      const dataUrl = await toPng(containerRef.current, { cacheBust: true, pixelRatio: 2 });
-      return dataUrl;
+      // 1. Get the map canvas data directly to avoid WebGL cross-origin / toPng issues
+      const mapCanvas = mapRef.current.getMap().getCanvas();
+      const mapDataUrl = mapCanvas.toDataURL('image/png');
+
+      // 2. Capture the UI overlay (excluding the map canvas itself)
+      const uiDataUrl = await toPng(containerRef.current, { 
+        cacheBust: true, 
+        pixelRatio: window.devicePixelRatio || 2,
+        filter: (node: HTMLElement) => {
+          // Exclude the map canvas from being re-rendered by html-to-image
+          if (node.tagName === 'CANVAS' && node.classList.contains('maplibregl-canvas')) {
+            return false;
+          }
+          return true;
+        }
+      });
+
+      // 3. Composite them together offscreen
+      const finalCanvas = document.createElement('canvas');
+      finalCanvas.width = mapCanvas.width;
+      finalCanvas.height = mapCanvas.height;
+      const ctx = finalCanvas.getContext('2d');
+      if (!ctx) return null;
+
+      const mapImg = new Image();
+      const uiImg = new Image();
+      
+      const loadImage = (img: HTMLImageElement, src: string) => 
+        new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve();
+          img.onerror = reject;
+          img.src = src;
+        });
+
+      await Promise.all([
+        loadImage(mapImg, mapDataUrl),
+        loadImage(uiImg, uiDataUrl)
+      ]);
+
+      // Draw map first (background)
+      ctx.drawImage(mapImg, 0, 0);
+      // Draw UI on top, scaled to fit map canvas dimensions perfectly
+      ctx.drawImage(uiImg, 0, 0, finalCanvas.width, finalCanvas.height);
+
+      return finalCanvas.toDataURL('image/png');
     } finally {
       setIsSnapshotMode(false);
     }
