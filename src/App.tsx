@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from 'react';
 import {
   MapPin,
   Flag,
@@ -6,11 +7,15 @@ import {
   CloudRain,
   CloudLightning,
   Snowflake,
-  CloudSnow
+  CloudSnow,
+  NavigationArrow
 } from '@phosphor-icons/react'
 import * as maplibregl from 'maplibre-gl';
 import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
-import Map, { Source, Layer, Marker } from 'react-map-gl/maplibre';
+import Map, { Source, Layer, Marker, MapRef } from 'react-map-gl/maplibre';
+import length from '@turf/length';
+import along from '@turf/along';
+import { lineString } from '@turf/helpers';
 
 // Fix for Vite production build: explicitly set the worker URL so it resolves correctly
 maplibregl.setWorkerUrl(mapLibreWorkerUrl);
@@ -73,8 +78,6 @@ const routeSegments = [
   }
 ];
 
-
-
 const rasterMapStyle = {
   version: 8,
   sources: {
@@ -102,11 +105,77 @@ const rasterMapStyle = {
 };
 
 function App() {
+  const mapRef = useRef<MapRef>(null);
+  
+  // Animation State
+  const [routeState, setRouteState] = useState<'hidden' | 'animating' | 'visible'>('hidden');
+  const [vehiclePosition, setVehiclePosition] = useState<[number, number] | null>(null);
+  const [progress, setProgress] = useState(0); // 0 to 1
+
+  const startAnimation = () => {
+    setRouteState('animating');
+    setProgress(0);
+    setVehiclePosition(routeSegments[0].coordinates as [number, number]);
+
+    // Cinematic zoom to frame the route
+    if (mapRef.current) {
+      mapRef.current.fitBounds(
+        [
+          [-122.5, 37.7], // SW corner
+          [-119.8, 39.4]  // NE corner
+        ],
+        { padding: 100, duration: 1500 }
+      );
+    }
+  };
+
+  useEffect(() => {
+    if (routeState !== 'animating') return;
+
+    let animationFrame: number;
+    let startTime: number | null = null;
+    const ANIMATION_DURATION_MS = 6000; // 6 seconds
+
+    // Pre-calculate full route line and distance
+    const fullCoordinates = routeSegments.map(s => s.coordinates);
+    const routeLine = lineString(fullCoordinates);
+    const totalDistance = length(routeLine, { units: 'miles' });
+
+    const animate = (timestamp: number) => {
+      if (!startTime) startTime = timestamp;
+      const elapsed = timestamp - startTime;
+      
+      // Easing function for smooth acceleration/deceleration
+      const t = Math.min(elapsed / ANIMATION_DURATION_MS, 1);
+      const easeInOut = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+
+      setProgress(easeInOut);
+
+      const currentDistance = totalDistance * easeInOut;
+      
+      if (easeInOut >= 1) {
+        setRouteState('visible');
+        setVehiclePosition(fullCoordinates[fullCoordinates.length - 1] as [number, number]);
+        return;
+      }
+
+      // Calculate vehicle position at current distance
+      const currentPoint = along(routeLine, currentDistance, { units: 'miles' });
+      setVehiclePosition(currentPoint.geometry.coordinates as [number, number]);
+
+      animationFrame = requestAnimationFrame(animate);
+    };
+
+    animationFrame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animationFrame);
+  }, [routeState]);
+
   return (
     <div className="relative w-full h-screen bg-zinc-950 overflow-hidden text-zinc-50 font-sans flex">
       {/* Interactive Map */}
       <div className="absolute inset-0 z-0">
         <Map
+          ref={mapRef}
           mapLib={maplibregl}
           initialViewState={{
             longitude: -121.3,
@@ -117,12 +186,37 @@ function App() {
           style={{ width: '100%', height: '100%' }}
           mapStyle={rasterMapStyle as any}
         >
-          {/* Glowing Route Line Segments (CSP Compliant - No Expressions) */}
-          {routeSegments.slice(0, -1).map((seg, i) => {
+          {/* Glowing Route Line Segments (CSP Compliant & Animated) */}
+          {(routeState === 'animating' || routeState === 'visible') && routeSegments.slice(0, -1).map((seg, i) => {
             const nextSeg = routeSegments[i + 1];
             const severity = nextSeg.weather.severity;
             
-            // Determine colors without Maplibre expressions to avoid unsafe-eval CSP errors
+            // Build segment geometry based on animation progress
+            const segmentLine = lineString([seg.coordinates, nextSeg.coordinates]);
+            const segmentDist = length(segmentLine, { units: 'miles' });
+            
+            // Calculate how far along the TOTAL route this segment starts and ends
+            const prevSegments = routeSegments.slice(0, i + 1);
+            const distToStart = length(lineString(prevSegments.map(s => s.coordinates)), { units: 'miles' });
+            const distToEnd = distToStart + segmentDist;
+            
+            const totalRouteLine = lineString(routeSegments.map(s => s.coordinates));
+            const totalDist = length(totalRouteLine, { units: 'miles' });
+            const currentDist = progress * totalDist;
+
+            let segmentCoords: number[][] = [];
+
+            if (currentDist >= distToEnd) {
+              // Fully drawn segment
+              segmentCoords = [seg.coordinates, nextSeg.coordinates];
+            } else if (currentDist > distToStart) {
+              // Partially drawn segment
+              segmentCoords = [seg.coordinates, vehiclePosition || seg.coordinates];
+            } else {
+              // Not drawn yet
+              return null;
+            }
+
             const glowColor = severity === 'safe' ? '#3b82f6' : severity === 'warning' ? '#f59e0b' : severity === 'critical' ? '#d946ef' : '#a855f7';
             const coreColor = severity === 'safe' ? '#93c5fd' : severity === 'warning' ? '#fcd34d' : severity === 'critical' ? '#f0abfc' : '#d8b4fe';
 
@@ -133,7 +227,7 @@ function App() {
                   type: 'Feature',
                   geometry: {
                     type: 'LineString',
-                    coordinates: [seg.coordinates, nextSeg.coordinates]
+                    coordinates: segmentCoords
                   }
                 }
               ]
@@ -163,11 +257,43 @@ function App() {
             );
           })}
 
+          {/* Vehicle Indicator */}
+          {vehiclePosition && (
+            <Marker
+              longitude={vehiclePosition[0]}
+              latitude={vehiclePosition[1]}
+              anchor="center"
+              style={{ zIndex: 50 }}
+            >
+              <div className="relative flex items-center justify-center pointer-events-none">
+                <div className="absolute w-8 h-8 bg-zinc-50 rounded-full opacity-30 animate-ping"></div>
+                <div className="w-5 h-5 bg-zinc-50 rounded-full flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.8)] border-2 border-zinc-900">
+                   <NavigationArrow size={12} weight="fill" className="text-zinc-900 rotate-45 translate-x-[1px] -translate-y-[1px]" />
+                </div>
+              </div>
+            </Marker>
+          )}
+
           {/* Markers for Weather Points */}
-          {routeSegments.map(seg => {
+          {routeSegments.map((seg, i) => {
             const isSafe = seg.weather.severity === 'safe';
             const isWarning = seg.weather.severity === 'warning';
             
+            // Determine if marker should be visible
+            let isVisible = false;
+            if (routeState === 'hidden') {
+              isVisible = true; // Show initial map state
+            } else if (routeState === 'visible') {
+              isVisible = true; // Show final state
+            } else {
+              // During animation, only show if vehicle has passed it
+              const distToNode = i === 0 ? 0 : length(lineString(routeSegments.slice(0, i + 1).map(s => s.coordinates)), { units: 'miles' });
+              const currentDist = progress * length(lineString(routeSegments.map(s => s.coordinates)), { units: 'miles' });
+              isVisible = currentDist >= distToNode;
+            }
+            
+            if (!isVisible) return null;
+
             return (
               <Marker
                 key={`marker-${seg.id}`}
@@ -175,7 +301,7 @@ function App() {
                 latitude={seg.coordinates[1]}
                 anchor="bottom"
               >
-                <div className={`flex flex-col items-center justify-center -translate-y-2 cursor-pointer transition-transform hover:scale-110
+                <div className={`flex flex-col items-center justify-center -translate-y-2 cursor-pointer transition-transform hover:scale-110 animate-in fade-in zoom-in duration-300
                   ${isSafe ? 'text-blue-400' : isWarning ? 'text-amber-400' : 'text-fuchsia-400'}`}
                 >
                   <div className="bg-zinc-900/80 backdrop-blur-sm border border-zinc-700/50 rounded-lg p-1 shadow-lg flex items-center justify-center mb-1">
@@ -211,8 +337,12 @@ function App() {
               <div className="text-3xl font-bold tracking-tight">4h 15m</div>
               <div className="text-sm text-zinc-400 font-mono mt-1">210 mi • ETA 8:30 PM</div>
             </div>
-            <button className="bg-zinc-100 text-zinc-900 font-medium px-4 py-2 rounded-full text-sm hover:bg-white transition-colors active:scale-95 cursor-pointer">
-              Leave Now
+            <button 
+              onClick={startAnimation}
+              disabled={routeState === 'animating'}
+              className="bg-zinc-100 text-zinc-900 font-medium px-4 py-2 rounded-full text-sm hover:bg-white transition-colors active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {routeState === 'animating' ? 'Navigating...' : routeState === 'visible' ? 'Recalculate' : 'Leave Now'}
             </button>
           </div>
         </div>
@@ -226,13 +356,18 @@ function App() {
             <div className="absolute top-4 bottom-4 left-[11px] w-[2px] bg-zinc-800 rounded-full"></div>
             
             <div className="flex flex-col gap-8">
-              {routeSegments.map((seg) => {
+              {routeSegments.map((seg, i) => {
                 const Icon = seg.weather.icon;
                 const isSafe = seg.weather.severity === 'safe';
                 const isWarning = seg.weather.severity === 'warning';
                 
+                // Dim timeline items if they haven't been reached yet during animation
+                const distToNode = i === 0 ? 0 : length(lineString(routeSegments.slice(0, i + 1).map(s => s.coordinates)), { units: 'miles' });
+                const currentDist = progress * length(lineString(routeSegments.map(s => s.coordinates)), { units: 'miles' });
+                const isReached = routeState === 'hidden' || currentDist >= distToNode || routeState === 'visible';
+
                 return (
-                  <div key={seg.id} className="relative">
+                  <div key={seg.id} className={`relative transition-opacity duration-500 ${isReached ? 'opacity-100' : 'opacity-30'}`}>
                     {/* Node */}
                     <div className={`absolute -left-6 w-3 h-3 rounded-full border-2 border-zinc-900 mt-1.5 z-10 
                       ${isSafe ? 'bg-blue-500' : isWarning ? 'bg-amber-500' : 'bg-fuchsia-500'}`}>
