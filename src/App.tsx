@@ -121,7 +121,6 @@ function App() {
           {routeSegments.map(seg => {
             const isSafe = seg.weather.severity === 'safe';
             const isWarning = seg.weather.severity === 'warning';
-            const isCritical = seg.weather.severity === 'critical';
             
             return (
               <Marker
