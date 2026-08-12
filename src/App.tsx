@@ -327,12 +327,53 @@ function App() {
     if (!containerRef.current || !mapRef.current) return null;
     setShowShareMenu(false);
     setIsSnapshotMode(true);
-    // Wait for React to render snapshot UI and map to settle
-    await new Promise(r => setTimeout(r, 150)); 
+    
+    const map = mapRef.current.getMap();
+    map.resize(); // Ensure map knows about any layout changes
+    
+    // Automatically re-frame the map to ensure the whole route is perfectly visible in the snapshot
+    if (routeData) {
+      const lons = routeData.routeLine.geometry.coordinates.map((c: any) => c[0]);
+      const lats = routeData.routeLine.geometry.coordinates.map((c: any) => c[1]);
+      map.fitBounds(
+        [
+          [Math.min(...lons), Math.min(...lats)],
+          [Math.max(...lons), Math.max(...lats)]
+        ],
+        { padding: 100, duration: 0 }
+      );
+    }
+    
+    // Wait for map to finish loading tiles
+    await new Promise<void>((resolve) => {
+      let resolved = false;
+      const doResolve = () => {
+        if (resolved) return;
+        resolved = true;
+        resolve();
+      };
+      if (map.isStyleLoaded() && map.areTilesLoaded()) {
+        doResolve();
+      } else {
+        map.once('idle', doResolve);
+        setTimeout(doResolve, 1500); // Fail-safe timeout
+      }
+    });
+
+    // Wait for React to render snapshot UI
+    await new Promise(r => setTimeout(r, 100)); 
     try {
-      // 1. Get the map canvas data directly to avoid WebGL cross-origin / toPng issues
-      const mapCanvas = mapRef.current.getMap().getCanvas();
-      const mapDataUrl = mapCanvas.toDataURL('image/png');
+      // 1. Get the map canvas data safely within a render cycle to avoid blank exports
+      const mapDataUrl = await new Promise<string>((resolve, reject) => {
+        map.once('render', () => {
+          try {
+            resolve(map.getCanvas().toDataURL('image/png'));
+          } catch (e) {
+            reject(e);
+          }
+        });
+        map.triggerRepaint();
+      });
 
       // 2. Capture the UI overlay (excluding the map canvas itself)
       const uiDataUrl = await toPng(containerRef.current, { 
@@ -350,6 +391,7 @@ function App() {
 
       // 3. Composite them together offscreen
       const finalCanvas = document.createElement('canvas');
+      const mapCanvas = map.getCanvas();
       finalCanvas.width = mapCanvas.width;
       finalCanvas.height = mapCanvas.height;
       const ctx = finalCanvas.getContext('2d');
