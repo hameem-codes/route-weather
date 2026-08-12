@@ -444,8 +444,7 @@ function App() {
       const file = dataURLtoFile(dataUrl, 'routeweather.png');
       const shareData = {
           title: 'RouteWeather',
-          text: `Check out my RouteWeather trip`,
-          url: url.toString(),
+          text: `Check out my RouteWeather trip\n\n${url.toString()}`,
           files: [file]
       };
 
