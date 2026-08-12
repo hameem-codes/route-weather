@@ -71,13 +71,43 @@ const routeSegments = [
 
 const geojson = {
   type: 'FeatureCollection',
-  features: [
-    {
+  features: routeSegments.slice(0, -1).map((seg, i) => {
+    const nextSeg = routeSegments[i + 1];
+    return {
       type: 'Feature',
+      properties: {
+        severity: nextSeg.weather.severity
+      },
       geometry: {
         type: 'LineString',
-        coordinates: routeSegments.map(s => s.coordinates)
+        coordinates: [seg.coordinates, nextSeg.coordinates]
       }
+    };
+  })
+};
+
+const rasterMapStyle = {
+  version: 8,
+  sources: {
+    'carto-dark': {
+      type: 'raster',
+      tiles: [
+        'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+        'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+        'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+        'https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
+      ],
+      tileSize: 256,
+      attribution: '&copy; <a href="https://carto.com/">CARTO</a>'
+    }
+  },
+  layers: [
+    {
+      id: 'carto-dark-layer',
+      type: 'raster',
+      source: 'carto-dark',
+      minzoom: 0,
+      maxzoom: 22
     }
   ]
 };
@@ -96,31 +126,7 @@ function App() {
             pitch: 45
           }}
           style={{ width: '100%', height: '100%' }}
-          mapStyle={{
-            version: 8,
-            sources: {
-              'carto-dark': {
-                type: 'raster',
-                tiles: [
-                  'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-                  'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-                  'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-                  'https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
-                ],
-                tileSize: 256,
-                attribution: '&copy; <a href="https://carto.com/">CARTO</a>'
-              }
-            },
-            layers: [
-              {
-                id: 'carto-dark-layer',
-                type: 'raster',
-                source: 'carto-dark',
-                minzoom: 0,
-                maxzoom: 22
-              }
-            ]
-          }}
+          mapStyle={rasterMapStyle as any}
         >
           {/* Glowing Route Line */}
           <Source id="route" type="geojson" data={geojson as any}>
@@ -128,7 +134,14 @@ function App() {
               id="route-line"
               type="line"
               paint={{
-                'line-color': '#a855f7', // Glowing purple to match reference
+                'line-color': [
+                  'match',
+                  ['get', 'severity'],
+                  'safe', '#3b82f6',     // blue
+                  'warning', '#f59e0b',  // amber
+                  'critical', '#d946ef', // fuchsia
+                  '#a855f7'
+                ],
                 'line-width': 6,
                 'line-opacity': 0.8,
                 'line-blur': 2
@@ -138,7 +151,14 @@ function App() {
               id="route-line-core"
               type="line"
               paint={{
-                'line-color': '#d8b4fe',
+                'line-color': [
+                  'match',
+                  ['get', 'severity'],
+                  'safe', '#93c5fd',     // light blue
+                  'warning', '#fcd34d',  // light amber
+                  'critical', '#f0abfc', // light fuchsia
+                  '#d8b4fe'
+                ],
                 'line-width': 2,
               }}
             />
