@@ -8,6 +8,7 @@ import {
   Snowflake,
   CloudSnow
 } from '@phosphor-icons/react'
+import maplibregl from 'maplibre-gl';
 import Map, { Source, Layer, Marker } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
@@ -87,6 +88,7 @@ function App() {
       {/* Interactive Map */}
       <div className="absolute inset-0 z-0">
         <Map
+          mapLib={maplibregl}
           initialViewState={{
             longitude: -121.3,
             latitude: 38.5,
