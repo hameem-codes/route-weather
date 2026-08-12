@@ -567,11 +567,11 @@ function App() {
           onClick={() => setSelectedMarker(null)}
         >
           <div 
-            className="bg-zinc-900 border border-zinc-800 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300"
+            className="bg-zinc-900 border border-zinc-800 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 max-h-[85vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="flex justify-between items-start p-6 pb-4">
+            <div className="flex justify-between items-start p-6 pb-4 bg-zinc-900 z-10 sticky top-0 border-b border-zinc-800/50">
               <div>
                 <h2 className="text-xl font-bold text-zinc-100">{selectedMarker.locationName}</h2>
                 <p className="text-sm text-zinc-400 mt-1">Arrival: {selectedMarker.timeFromStartMins} mins from start</p>
@@ -585,7 +585,7 @@ function App() {
             </div>
 
             {/* Modal Body */}
-            <div className="px-6 pb-6 space-y-6">
+            <div className="px-6 pb-6 pt-4 space-y-6 overflow-y-auto no-scrollbar flex-1">
               
               {/* Main Temp & Condition */}
               <div className="flex items-center justify-between">
