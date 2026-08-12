@@ -198,7 +198,7 @@ function App() {
             
             // Calculate how far along the TOTAL route this segment starts and ends
             const prevSegments = routeSegments.slice(0, i + 1);
-            const distToStart = length(lineString(prevSegments.map(s => s.coordinates)), { units: 'miles' });
+            const distToStart = i === 0 ? 0 : length(lineString(prevSegments.map(s => s.coordinates)), { units: 'miles' });
             const distToEnd = distToStart + segmentDist;
             
             const totalRouteLine = lineString(routeSegments.map(s => s.coordinates));
