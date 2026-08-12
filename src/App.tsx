@@ -332,6 +332,7 @@ function App() {
     map.resize(); // Ensure map knows about any layout changes
     
     // Automatically re-frame the map to ensure the whole route is perfectly visible in the snapshot
+    // Add heavy padding to the left to leave room for the info panel (which will be rendered top-left)
     if (routeData) {
       const lons = routeData.routeLine.geometry.coordinates.map((c: any) => c[0]);
       const lats = routeData.routeLine.geometry.coordinates.map((c: any) => c[1]);
@@ -340,11 +341,11 @@ function App() {
           [Math.min(...lons), Math.min(...lats)],
           [Math.max(...lons), Math.max(...lats)]
         ],
-        { padding: 100, duration: 0 }
+        { padding: { top: 100, bottom: 100, left: 450, right: 100 }, duration: 0 }
       );
     }
     
-    // Wait for map to finish loading tiles
+    // Wait for map to finish loading tiles after the bounds change
     await new Promise<void>((resolve) => {
       let resolved = false;
       const doResolve = () => {
@@ -360,20 +361,13 @@ function App() {
       }
     });
 
-    // Wait for React to render snapshot UI
-    await new Promise(r => setTimeout(r, 100)); 
+    // Wait for React to render snapshot UI and map to stabilize its drawing buffer
+    await new Promise(r => setTimeout(r, 250)); 
     try {
-      // 1. Get the map canvas data safely within a render cycle to avoid blank exports
-      const mapDataUrl = await new Promise<string>((resolve, reject) => {
-        map.once('render', () => {
-          try {
-            resolve(map.getCanvas().toDataURL('image/png'));
-          } catch (e) {
-            reject(e);
-          }
-        });
-        map.triggerRepaint();
-      });
+      // 1. Get the map canvas data. Since preserveDrawingBuffer=true and no state props disrupt the map,
+      // the canvas buffer should be intact here.
+      const mapCanvas = map.getCanvas();
+      const mapDataUrl = mapCanvas.toDataURL('image/png');
 
       // 2. Capture the UI overlay (excluding the map canvas itself)
       const uiDataUrl = await toPng(containerRef.current, { 
@@ -391,7 +385,6 @@ function App() {
 
       // 3. Composite them together offscreen
       const finalCanvas = document.createElement('canvas');
-      const mapCanvas = map.getCanvas();
       finalCanvas.width = mapCanvas.width;
       finalCanvas.height = mapCanvas.height;
       const ctx = finalCanvas.getContext('2d');
@@ -477,9 +470,9 @@ function App() {
   };
 
   return (
-    <div ref={containerRef} className={`relative w-full h-screen overflow-hidden text-zinc-50 font-sans flex ${isSnapshotMode ? 'bg-transparent' : 'bg-zinc-950'}`}>
+    <div ref={containerRef} className={`relative w-full h-screen overflow-hidden text-zinc-50 font-sans flex ${isSnapshotMode ? 'bg-transparent pointer-events-none' : 'bg-zinc-950'}`}>
       {/* Interactive Map */}
-      <div className="absolute inset-0 z-0">
+      <div className={`absolute inset-0 z-0 ${isSnapshotMode ? 'pointer-events-none' : ''}`}>
         <Map
           ref={mapRef}
           mapLib={maplibregl}
@@ -491,7 +484,6 @@ function App() {
           }}
           // @ts-ignore - maplibre init option for html-to-image
           preserveDrawingBuffer={true} // crucial for html-to-image to work on WebGL canvases
-          interactive={!isSnapshotMode} // Disable interactions during snapshot
           style={{ width: '100%', height: '100%' }}
           mapStyle={rasterMapStyle as any}
         >
@@ -650,19 +642,22 @@ function App() {
       {/* Snapshot Overlay Graphic (Only visible in Snapshot Mode) */}
       {isSnapshotMode && routeData && (
         <div className="absolute inset-0 z-20 pointer-events-none flex flex-col justify-between p-8 md:p-12">
-          <div className="bg-zinc-950/80 backdrop-blur-2xl border border-zinc-800/50 rounded-3xl p-6 md:p-8 max-w-lg shadow-2xl self-start">
-            <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-white mb-2">
-              {originInput.split(',')[0]} <span className="text-zinc-600 font-normal mx-2">to</span> {destInput.split(',')[0]}
+          <div className="bg-zinc-900/80 backdrop-blur-3xl border border-zinc-800/80 rounded-[2rem] p-8 max-w-[26rem] shadow-2xl self-start mt-4 ml-4">
+            <h1 className="text-[2.5rem] leading-tight font-bold tracking-tight text-white mb-6">
+              {originInput.split(',')[0]}<br/>
+              <span className="text-zinc-500 font-medium tracking-normal text-3xl">to </span>
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-400 to-purple-500 text-4xl">{destInput.split(',')[0]}</span>
             </h1>
-            <div className="flex items-center gap-6 mt-4">
+            
+            <div className="flex items-center gap-8 mt-2 pt-6 border-t border-zinc-800/80">
                <div>
-                 <div className="text-sm font-medium text-zinc-400 mb-0.5 uppercase tracking-wider">Est. Travel Time</div>
-                 <div className="text-2xl font-bold text-white font-mono">{Math.floor(routeData.totalTimeMins / 60)}h {routeData.totalTimeMins % 60}m</div>
+                 <div className="text-xs font-semibold text-zinc-400 mb-1.5 uppercase tracking-widest">Est. Travel Time</div>
+                 <div className="text-2xl font-bold text-white tracking-tight">{Math.floor(routeData.totalTimeMins / 60)}h {routeData.totalTimeMins % 60}m</div>
                </div>
                <div className="w-px h-10 bg-zinc-800"></div>
                <div>
-                 <div className="text-sm font-medium text-zinc-400 mb-0.5 uppercase tracking-wider">Distance</div>
-                 <div className="text-2xl font-bold text-white font-mono">{Math.round(routeData.totalDistanceMi)} mi</div>
+                 <div className="text-xs font-semibold text-zinc-400 mb-1.5 uppercase tracking-widest">Distance</div>
+                 <div className="text-2xl font-bold text-white tracking-tight">{Math.round(routeData.totalDistanceMi)} mi</div>
                </div>
             </div>
           </div>
