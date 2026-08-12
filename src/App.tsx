@@ -9,7 +9,11 @@ import {
   CloudSnow
 } from '@phosphor-icons/react'
 import * as maplibregl from 'maplibre-gl';
+import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import Map, { Source, Layer, Marker } from 'react-map-gl/maplibre';
+
+// Fix for Vite production build: explicitly set the worker URL so it resolves correctly
+maplibregl.setWorkerUrl(mapLibreWorkerUrl);
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 const routeSegments = [
