@@ -3,6 +3,7 @@ import {
   MapPin,
   Flag,
   Sun,
+  Moon,
   Cloud,
   CloudRain,
   CloudLightning,
@@ -79,7 +80,7 @@ const routeSegments = [
   }
 ];
 
-const rasterMapStyle = {
+const rasterDarkMapStyle = {
   version: 8,
   sources: {
     'carto-dark': {
@@ -105,9 +106,38 @@ const rasterMapStyle = {
   ]
 };
 
+const rasterLightMapStyle = {
+  version: 8,
+  sources: {
+    'carto-light': {
+      type: 'raster',
+      tiles: [
+        'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+        'https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+        'https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+        'https://d.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'
+      ],
+      tileSize: 256,
+      attribution: '&copy; <a href="https://carto.com/">CARTO</a>'
+    }
+  },
+  layers: [
+    {
+      id: 'carto-light-layer',
+      type: 'raster',
+      source: 'carto-light',
+      minzoom: 0,
+      maxzoom: 22
+    }
+  ]
+};
+
 function App() {
   const mapRef = useRef<MapRef>(null);
   
+  // Theme State
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+
   // Animation State
   const [routeState, setRouteState] = useState<'hidden' | 'animating' | 'visible'>('hidden');
   const [vehiclePosition, setVehiclePosition] = useState<[number, number] | null>(null);
@@ -171,8 +201,10 @@ function App() {
     return () => cancelAnimationFrame(animationFrame);
   }, [routeState]);
 
+  const isDark = theme === 'dark';
+
   return (
-    <div className="relative w-full h-screen bg-zinc-950 overflow-hidden text-zinc-50 font-sans flex">
+    <div className={`relative w-full h-screen overflow-hidden font-sans flex ${isDark ? 'bg-zinc-950 text-zinc-50' : 'bg-slate-50 text-slate-900'}`}>
       {/* Interactive Map */}
       <div className="absolute inset-0 z-0">
         <Map
@@ -185,7 +217,7 @@ function App() {
             pitch: 45
           }}
           style={{ width: '100%', height: '100%' }}
-          mapStyle={rasterMapStyle as any}
+          mapStyle={(isDark ? rasterDarkMapStyle : rasterLightMapStyle) as any}
         >
           {/* Glowing Route Line Segments (CSP Compliant & Animated) */}
           {(routeState === 'animating' || routeState === 'visible') && routeSegments.slice(0, -1).map((seg, i) => {
@@ -267,9 +299,9 @@ function App() {
               style={{ zIndex: 50 }}
             >
               <div className="relative flex items-center justify-center pointer-events-none">
-                <div className="absolute w-8 h-8 bg-zinc-50 rounded-full opacity-30 animate-ping"></div>
-                <div className="w-5 h-5 bg-zinc-50 rounded-full flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.8)] border-2 border-zinc-900">
-                   <NavigationArrow size={12} weight="fill" className="text-zinc-900 rotate-45 translate-x-[1px] -translate-y-[1px]" />
+                <div className={`absolute w-8 h-8 rounded-full opacity-30 animate-ping ${isDark ? 'bg-zinc-50' : 'bg-slate-900'}`}></div>
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.8)] border-2 ${isDark ? 'bg-zinc-50 border-zinc-900' : 'bg-slate-900 border-white'}`}>
+                   <NavigationArrow size={12} weight="fill" className={`rotate-45 translate-x-[1px] -translate-y-[1px] ${isDark ? 'text-zinc-900' : 'text-white'}`} />
                 </div>
               </div>
             </Marker>
@@ -305,10 +337,10 @@ function App() {
                 <div className={`flex flex-col items-center justify-center -translate-y-2 cursor-pointer transition-transform hover:scale-110 animate-in fade-in zoom-in duration-300
                   ${isSafe ? 'text-blue-400' : isWarning ? 'text-amber-400' : 'text-fuchsia-400'}`}
                 >
-                  <div className="bg-zinc-900/80 backdrop-blur-sm border border-zinc-700/50 rounded-lg p-1 shadow-lg flex items-center justify-center mb-1">
+                  <div className={`backdrop-blur-sm border rounded-lg p-1 shadow-lg flex items-center justify-center mb-1 ${isDark ? 'bg-zinc-900/80 border-zinc-700/50' : 'bg-white/90 border-slate-200'}`}>
                      <seg.weather.icon size={20} weight="duotone" />
                   </div>
-                  <div className="w-1.5 h-1.5 rounded-full bg-current shadow-[0_0_10px_currentColor]"></div>
+                  <div className={`w-1.5 h-1.5 rounded-full bg-current shadow-[0_0_10px_currentColor] ${isDark ? '' : 'border border-white/50'}`}></div>
                 </div>
               </Marker>
             );
@@ -319,29 +351,45 @@ function App() {
       {/* Sidebar Dashboard (Layered on top of map) */}
       <div className="absolute top-0 left-0 w-full md:w-[400px] h-full flex flex-col p-4 md:p-6 z-10 pointer-events-none">
         
+        {/* Header with Theme Toggle */}
+        <div className="pointer-events-auto flex justify-end mb-2">
+          <button 
+            onClick={() => setTheme(isDark ? 'light' : 'dark')}
+            className={`p-2 rounded-full backdrop-blur-md border shadow-lg transition-colors cursor-pointer hover:scale-105 active:scale-95
+              ${isDark ? 'bg-zinc-900/80 border-zinc-800 text-amber-400 hover:bg-zinc-800' : 'bg-white/90 border-slate-200 text-indigo-500 hover:bg-slate-50'}`}
+            aria-label="Toggle theme"
+          >
+            {isDark ? <Sun size={20} weight="fill" /> : <Moon size={20} weight="fill" />}
+          </button>
+        </div>
+
         {/* Input Panel */}
-        <div className="pointer-events-auto bg-zinc-900/80 backdrop-blur-xl border border-zinc-800 rounded-2xl p-5 mb-4 shadow-2xl flex-shrink-0">
+        <div className={`pointer-events-auto backdrop-blur-xl border rounded-2xl p-5 mb-4 shadow-2xl flex-shrink-0 transition-colors duration-300
+          ${isDark ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white/90 border-slate-200'}`}>
           <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-3 bg-zinc-800/50 rounded-xl px-4 py-3 border border-transparent focus-within:border-zinc-700 transition-colors">
-              <MapPin size={20} className="text-zinc-400" />
-              <input type="text" defaultValue="San Francisco, CA" className="bg-transparent border-none outline-none text-sm w-full font-medium" />
+            <div className={`flex items-center gap-3 rounded-xl px-4 py-3 border border-transparent transition-colors
+              ${isDark ? 'bg-zinc-800/50 focus-within:border-zinc-700' : 'bg-slate-100 focus-within:border-slate-300'}`}>
+              <MapPin size={20} className={isDark ? 'text-zinc-400' : 'text-slate-400'} />
+              <input type="text" defaultValue="San Francisco, CA" className={`bg-transparent border-none outline-none text-sm w-full font-medium ${isDark ? 'text-zinc-50' : 'text-slate-900'}`} />
             </div>
-            <div className="w-[1px] h-3 bg-zinc-700 ml-6"></div>
-            <div className="flex items-center gap-3 bg-zinc-800/50 rounded-xl px-4 py-3 border border-transparent focus-within:border-zinc-700 transition-colors">
-              <Flag size={20} className="text-zinc-400" />
-              <input type="text" defaultValue="Lake Tahoe, CA" className="bg-transparent border-none outline-none text-sm w-full font-medium" />
+            <div className={`w-[1px] h-3 ml-6 ${isDark ? 'bg-zinc-700' : 'bg-slate-300'}`}></div>
+            <div className={`flex items-center gap-3 rounded-xl px-4 py-3 border border-transparent transition-colors
+              ${isDark ? 'bg-zinc-800/50 focus-within:border-zinc-700' : 'bg-slate-100 focus-within:border-slate-300'}`}>
+              <Flag size={20} className={isDark ? 'text-zinc-400' : 'text-slate-400'} />
+              <input type="text" defaultValue="Lake Tahoe, CA" className={`bg-transparent border-none outline-none text-sm w-full font-medium ${isDark ? 'text-zinc-50' : 'text-slate-900'}`} />
             </div>
           </div>
           
-          <div className="mt-5 pt-4 border-t border-zinc-800 flex justify-between items-end">
+          <div className={`mt-5 pt-4 border-t flex justify-between items-end ${isDark ? 'border-zinc-800' : 'border-slate-200'}`}>
             <div>
               <div className="text-3xl font-bold tracking-tight">4h 15m</div>
-              <div className="text-sm text-zinc-400 font-mono mt-1">210 mi • ETA 8:30 PM</div>
+              <div className={`text-sm font-mono mt-1 ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>210 mi • ETA 8:30 PM</div>
             </div>
             <button 
               onClick={startAnimation}
               disabled={routeState === 'animating'}
-              className="bg-zinc-100 text-zinc-900 font-medium px-4 py-2 rounded-full text-sm hover:bg-white transition-colors active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className={`font-medium px-4 py-2 rounded-full text-sm transition-colors active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed
+                ${isDark ? 'bg-zinc-100 text-zinc-900 hover:bg-white' : 'bg-slate-900 text-white hover:bg-slate-800'}`}
             >
               {routeState === 'animating' ? 'Navigating...' : routeState === 'visible' ? 'Recalculate' : 'Leave Now'}
             </button>
@@ -349,12 +397,13 @@ function App() {
         </div>
 
         {/* Timeline (Scrollable) */}
-        <div className="pointer-events-auto flex-1 overflow-y-auto no-scrollbar bg-zinc-900/80 backdrop-blur-xl border border-zinc-800 rounded-2xl p-5 shadow-2xl">
-          <h2 className="text-sm font-semibold uppercase tracking-widest text-zinc-500 mb-6 px-2">Weather Route</h2>
+        <div className={`pointer-events-auto flex-1 overflow-y-auto no-scrollbar backdrop-blur-xl border rounded-2xl p-5 shadow-2xl transition-colors duration-300
+          ${isDark ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white/90 border-slate-200'}`}>
+          <h2 className={`text-sm font-semibold uppercase tracking-widest mb-6 px-2 ${isDark ? 'text-zinc-500' : 'text-slate-400'}`}>Weather Route</h2>
           
           <div className="relative pl-6">
             {/* Connecting line */}
-            <div className="absolute top-4 bottom-4 left-[11px] w-[2px] bg-zinc-800 rounded-full"></div>
+            <div className={`absolute top-4 bottom-4 left-[11px] w-[2px] rounded-full ${isDark ? 'bg-zinc-800' : 'bg-slate-200'}`}></div>
             
             <div className="flex flex-col gap-8">
               {routeSegments.map((seg, i) => {
@@ -370,28 +419,29 @@ function App() {
                 return (
                   <div key={seg.id} className={`relative transition-opacity duration-500 ${isReached ? 'opacity-100' : 'opacity-30'}`}>
                     {/* Node */}
-                    <div className={`absolute -left-6 w-3 h-3 rounded-full border-2 border-zinc-900 mt-1.5 z-10 
+                    <div className={`absolute -left-6 w-3 h-3 rounded-full border-2 mt-1.5 z-10 
+                      ${isDark ? 'border-zinc-900' : 'border-white'}
                       ${isSafe ? 'bg-blue-500' : isWarning ? 'bg-amber-500' : 'bg-fuchsia-500'}`}>
                     </div>
 
                     <div className="flex flex-col gap-1">
                       <div className="flex justify-between items-baseline">
-                        <h3 className="font-medium text-zinc-100">{seg.locationName}</h3>
-                        <span className="text-xs font-mono text-zinc-500">+{seg.timeFromStartMins}m</span>
+                        <h3 className={`font-medium ${isDark ? 'text-zinc-100' : 'text-slate-800'}`}>{seg.locationName}</h3>
+                        <span className={`text-xs font-mono ${isDark ? 'text-zinc-500' : 'text-slate-400'}`}>+{seg.timeFromStartMins}m</span>
                       </div>
                       
                       <div className="flex items-center gap-4 mt-2">
                         <div className="flex items-center gap-2">
-                          <Icon size={24} className={isSafe ? 'text-blue-400' : isWarning ? 'text-amber-400' : 'text-fuchsia-400'} weight="duotone" />
-                          <span className="font-mono text-lg">{seg.weather.temperatureF}°</span>
+                          <Icon size={24} className={isSafe ? 'text-blue-500' : isWarning ? 'text-amber-500' : 'text-fuchsia-500'} weight="duotone" />
+                          <span className={`font-mono text-lg ${isDark ? 'text-zinc-50' : 'text-slate-900'}`}>{seg.weather.temperatureF}°</span>
                         </div>
-                        <span className="text-sm text-zinc-400">{seg.weather.condition}</span>
+                        <span className={`text-sm ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>{seg.weather.condition}</span>
                       </div>
 
                       {seg.alert && (
                         <div className={`mt-3 inline-flex items-center px-3 py-1 rounded-full text-xs font-medium self-start
-                          ${isWarning ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' : 
-                          'bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/20'}`}>
+                          ${isWarning ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20' : 
+                          'bg-fuchsia-500/10 text-fuchsia-600 border border-fuchsia-500/20'}`}>
                           {seg.alert}
                         </div>
                       )}
