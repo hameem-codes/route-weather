@@ -9,7 +9,13 @@ import {
   Snowflake,
   CloudSnow,
   NavigationArrow,
-  SpinnerGap
+  SpinnerGap,
+  X,
+  Wind,
+  Drop,
+  Eye,
+  CloudCheck,
+  Warning
 } from '@phosphor-icons/react'
 import * as maplibregl from 'maplibre-gl';
 import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
@@ -23,16 +29,69 @@ import { point } from '@turf/helpers';
 // Fix for Vite production build: explicitly set the worker URL so it resolves correctly
 maplibregl.setWorkerUrl(mapLibreWorkerUrl);
 
-// Fix for Vite production build: explicitly set the worker URL so it resolves correctly
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 const hardcodedWeatherProfiles = [
-  { weather: { condition: "Clear", temperatureF: 62, severity: "safe", icon: Sun }, alert: null },
-  { weather: { condition: "Cloudy", temperatureF: 58, severity: "safe", icon: Cloud }, alert: null },
-  { weather: { condition: "Rain", temperatureF: 52, severity: "warning", icon: CloudRain }, alert: "Moderate Rain, Slick Roads" },
-  { weather: { condition: "Heavy Rain", temperatureF: 46, severity: "warning", icon: CloudLightning }, alert: "Heavy Downpour" },
-  { weather: { condition: "Snow", temperatureF: 28, severity: "critical", icon: Snowflake }, alert: "Chain Control in Effect" },
-  { weather: { condition: "Light Snow", temperatureF: 22, severity: "critical", icon: CloudSnow }, alert: "Icy Roads" }
+  { 
+    weather: { 
+      condition: "Clear", temperatureF: 62, severity: "safe", icon: Sun,
+      rainProbability: 0, feelsLikeF: 61, humidity: 45, windSpeedMph: 10, windDirection: "NW",
+      visibilityMi: 10, precipitationIn: 0, cloudCover: 5, uvIndex: 7,
+      forecastText: "Clear skies expected for the next 4 hours.",
+      riskAssessment: "Optimal driving conditions."
+    }, 
+    alert: null 
+  },
+  { 
+    weather: { 
+      condition: "Cloudy", temperatureF: 58, severity: "safe", icon: Cloud,
+      rainProbability: 10, feelsLikeF: 57, humidity: 60, windSpeedMph: 12, windDirection: "W",
+      visibilityMi: 10, precipitationIn: 0, cloudCover: 80, uvIndex: 4,
+      forecastText: "Overcast conditions remaining steady.",
+      riskAssessment: "Optimal driving conditions."
+    }, 
+    alert: null 
+  },
+  { 
+    weather: { 
+      condition: "Rain", temperatureF: 52, severity: "warning", icon: CloudRain,
+      rainProbability: 85, feelsLikeF: 49, humidity: 88, windSpeedMph: 18, windDirection: "SW",
+      visibilityMi: 5, precipitationIn: 0.15, cloudCover: 100, uvIndex: 1,
+      forecastText: "Continuous rain expected through the afternoon.",
+      riskAssessment: "Reduced traction. Increase following distance."
+    }, 
+    alert: "Moderate Rain, Slick Roads" 
+  },
+  { 
+    weather: { 
+      condition: "Heavy Rain", temperatureF: 46, severity: "warning", icon: CloudLightning,
+      rainProbability: 100, feelsLikeF: 39, humidity: 95, windSpeedMph: 25, windDirection: "S",
+      visibilityMi: 2, precipitationIn: 0.8, cloudCover: 100, uvIndex: 0,
+      forecastText: "Heavy downpours with isolated lightning.",
+      riskAssessment: "High risk of hydroplaning. Reduce speed significantly."
+    }, 
+    alert: "Heavy Downpour" 
+  },
+  { 
+    weather: { 
+      condition: "Snow", temperatureF: 28, severity: "critical", icon: Snowflake,
+      rainProbability: 95, feelsLikeF: 15, humidity: 82, windSpeedMph: 20, windDirection: "NE",
+      visibilityMi: 1, precipitationIn: 0.4, cloudCover: 100, uvIndex: 1,
+      forecastText: "Steady snowfall accumulation of 2-4 inches expected.",
+      riskAssessment: "Severe winter conditions. Chains required on all non-4WD vehicles."
+    }, 
+    alert: "Chain Control in Effect" 
+  },
+  { 
+    weather: { 
+      condition: "Light Snow", temperatureF: 22, severity: "critical", icon: CloudSnow,
+      rainProbability: 60, feelsLikeF: 8, humidity: 75, windSpeedMph: 14, windDirection: "N",
+      visibilityMi: 4, precipitationIn: 0.1, cloudCover: 90, uvIndex: 2,
+      forecastText: "Light flurries tapering off by evening.",
+      riskAssessment: "Black ice possible on shaded roadways."
+    }, 
+    alert: "Icy Roads" 
+  }
 ];
 
 const rasterMapStyle = {
@@ -82,9 +141,15 @@ function App() {
   const [vehiclePosition, setVehiclePosition] = useState<[number, number] | null>(null);
   const [progress, setProgress] = useState(0); // 0 to 1
 
+  // Marker Interaction State
+  const [hoveredMarkerId, setHoveredMarkerId] = useState<string | null>(null);
+  const [selectedMarker, setSelectedMarker] = useState<any | null>(null);
+
   const calculateRoute = async () => {
     setIsLoading(true);
     setRouteState('hidden');
+    setSelectedMarker(null);
+    setHoveredMarkerId(null);
     
     try {
       // 1. Geocode Origin via Nominatim
@@ -296,7 +361,7 @@ function App() {
               longitude={vehiclePosition[0]}
               latitude={vehiclePosition[1]}
               anchor="center"
-              style={{ zIndex: 50 }}
+              style={{ zIndex: 40 }}
             >
               <div className="relative flex items-center justify-center pointer-events-none">
                 <div className="absolute w-8 h-8 bg-zinc-50 rounded-full opacity-30 animate-ping"></div>
@@ -324,20 +389,52 @@ function App() {
             
             if (!isVisible) return null;
 
+            const isHovered = hoveredMarkerId === seg.id;
+            const isSelected = selectedMarker?.id === seg.id;
+
             return (
               <Marker
                 key={`marker-${seg.id}`}
                 longitude={seg.coordinates[0]}
                 latitude={seg.coordinates[1]}
                 anchor="bottom"
+                style={{ zIndex: isHovered || isSelected ? 50 : 30 }}
               >
-                <div className={`flex flex-col items-center justify-center -translate-y-2 cursor-pointer transition-transform hover:scale-110 animate-in fade-in zoom-in duration-300
-                  ${isSafe ? 'text-blue-400' : isWarning ? 'text-amber-400' : 'text-fuchsia-400'}`}
-                >
-                  <div className="bg-zinc-900/80 backdrop-blur-sm border border-zinc-700/50 rounded-lg p-1 shadow-lg flex items-center justify-center mb-1">
-                     <seg.weather.icon size={20} weight="duotone" />
+                <div className="relative">
+                  {/* Tooltip (Hover State) */}
+                  {isHovered && !isSelected && (
+                    <div className="absolute bottom-full mb-2 -translate-x-1/2 left-1/2 flex flex-col items-center animate-in fade-in zoom-in-95 duration-150 pointer-events-none z-50">
+                      <div className="bg-zinc-900/95 backdrop-blur-xl border border-zinc-700/50 rounded-xl p-3 shadow-2xl min-w-[140px] text-center">
+                        <div className="font-semibold text-sm mb-1 truncate max-w-[120px]">{seg.locationName}</div>
+                        <div className="text-2xl font-bold font-mono">{seg.weather.temperatureF}°</div>
+                        <div className="text-xs text-zinc-400 mt-1">{seg.weather.condition}</div>
+                        {seg.weather.rainProbability > 0 && (
+                          <div className="text-xs text-blue-400 mt-1 font-medium">{seg.weather.rainProbability}% Rain</div>
+                        )}
+                      </div>
+                      <div className="w-0 h-0 border-l-[6px] border-r-[6px] border-t-[6px] border-transparent border-t-zinc-700/50 -mt-[1px]"></div>
+                    </div>
+                  )}
+
+                  {/* Marker Pin */}
+                  <div 
+                    onMouseEnter={() => setHoveredMarkerId(seg.id)}
+                    onMouseLeave={() => setHoveredMarkerId(null)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedMarker(seg);
+                    }}
+                    className={`flex flex-col items-center justify-center -translate-y-2 cursor-pointer transition-transform duration-300
+                      ${isSafe ? 'text-blue-400' : isWarning ? 'text-amber-400' : 'text-fuchsia-400'}
+                      ${isHovered || isSelected ? 'scale-125' : 'hover:scale-110'}
+                      animate-in fade-in zoom-in`}
+                  >
+                    <div className={`bg-zinc-900/90 backdrop-blur-md border rounded-lg p-1.5 shadow-lg flex items-center justify-center mb-1 transition-colors
+                      ${isSelected ? 'border-current' : 'border-zinc-700/50'}`}>
+                       <seg.weather.icon size={22} weight={isSelected ? "fill" : "duotone"} />
+                    </div>
+                    <div className="w-1.5 h-1.5 rounded-full bg-current shadow-[0_0_10px_currentColor]"></div>
                   </div>
-                  <div className="w-1.5 h-1.5 rounded-full bg-current shadow-[0_0_10px_currentColor]"></div>
                 </div>
               </Marker>
             );
@@ -400,10 +497,10 @@ function App() {
 
         {/* Timeline (Scrollable) */}
         {routeData && (
-          <div className="pointer-events-auto flex-1 overflow-y-auto no-scrollbar bg-zinc-900/80 backdrop-blur-xl border border-zinc-800 rounded-2xl p-5 shadow-2xl">
-            <h2 className="text-sm font-semibold uppercase tracking-widest text-zinc-500 mb-6 px-2">Weather Route</h2>
+          <div className="pointer-events-auto flex-1 overflow-y-auto no-scrollbar bg-zinc-900/80 backdrop-blur-xl border border-zinc-800 rounded-2xl p-5 shadow-2xl relative">
+            <h2 className="text-sm font-semibold uppercase tracking-widest text-zinc-500 mb-6 px-2 sticky top-0 bg-zinc-900/90 backdrop-blur py-2 z-10 -mt-2">Weather Route</h2>
             
-            <div className="relative pl-6">
+            <div className="relative pl-6 pb-4">
               {/* Connecting line */}
               <div className="absolute top-4 bottom-4 left-[11px] w-[2px] bg-zinc-800 rounded-full"></div>
               
@@ -445,6 +542,14 @@ function App() {
                             {seg.alert}
                           </div>
                         )}
+
+                        {/* Interactive button to show details */}
+                        <button 
+                          onClick={() => setSelectedMarker(seg)}
+                          className="mt-3 text-xs font-medium text-zinc-400 hover:text-zinc-200 self-start transition-colors px-2 py-1 -ml-2 rounded-md hover:bg-zinc-800/50"
+                        >
+                          More info
+                        </button>
                       </div>
                     </div>
                   )
@@ -453,8 +558,118 @@ function App() {
             </div>
           </div>
         )}
-
       </div>
+
+      {/* Detailed Weather Modal */}
+      {selectedMarker && (
+        <div 
+          className="absolute inset-0 z-50 flex items-center justify-center p-4 md:p-8 bg-black/40 backdrop-blur-sm pointer-events-auto animate-in fade-in duration-200"
+          onClick={() => setSelectedMarker(null)}
+        >
+          <div 
+            className="bg-zinc-900 border border-zinc-800 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex justify-between items-start p-6 pb-4">
+              <div>
+                <h2 className="text-xl font-bold text-zinc-100">{selectedMarker.locationName}</h2>
+                <p className="text-sm text-zinc-400 mt-1">Arrival: {selectedMarker.timeFromStartMins} mins from start</p>
+              </div>
+              <button 
+                onClick={() => setSelectedMarker(null)}
+                className="p-2 rounded-full hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="px-6 pb-6 space-y-6">
+              
+              {/* Main Temp & Condition */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className={`p-4 rounded-2xl ${
+                    selectedMarker.weather.severity === 'safe' ? 'bg-blue-500/10 text-blue-400' : 
+                    selectedMarker.weather.severity === 'warning' ? 'bg-amber-500/10 text-amber-400' : 'bg-fuchsia-500/10 text-fuchsia-400'
+                  }`}>
+                    <selectedMarker.weather.icon size={48} weight="duotone" />
+                  </div>
+                  <div>
+                    <div className="text-5xl font-bold font-mono tracking-tight">{selectedMarker.weather.temperatureF}°</div>
+                    <div className="text-lg text-zinc-300 font-medium">{selectedMarker.weather.condition}</div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm text-zinc-400 mb-1">Feels Like</div>
+                  <div className="text-2xl font-mono text-zinc-200">{selectedMarker.weather.feelsLikeF}°</div>
+                </div>
+              </div>
+
+              {/* Grid Stats */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-zinc-800/50 rounded-xl p-3 flex items-center gap-3 border border-zinc-800/80">
+                  <Wind size={20} className="text-zinc-400" />
+                  <div>
+                    <div className="text-xs text-zinc-500">Wind</div>
+                    <div className="text-sm font-medium">{selectedMarker.weather.windSpeedMph} mph {selectedMarker.weather.windDirection}</div>
+                  </div>
+                </div>
+                <div className="bg-zinc-800/50 rounded-xl p-3 flex items-center gap-3 border border-zinc-800/80">
+                  <Drop size={20} className="text-blue-400" />
+                  <div>
+                    <div className="text-xs text-zinc-500">Precipitation</div>
+                    <div className="text-sm font-medium">{selectedMarker.weather.precipitationIn}" / {selectedMarker.weather.rainProbability}%</div>
+                  </div>
+                </div>
+                <div className="bg-zinc-800/50 rounded-xl p-3 flex items-center gap-3 border border-zinc-800/80">
+                  <Eye size={20} className="text-zinc-400" />
+                  <div>
+                    <div className="text-xs text-zinc-500">Visibility</div>
+                    <div className="text-sm font-medium">{selectedMarker.weather.visibilityMi} mi</div>
+                  </div>
+                </div>
+                <div className="bg-zinc-800/50 rounded-xl p-3 flex items-center gap-3 border border-zinc-800/80">
+                  <CloudCheck size={20} className="text-zinc-400" />
+                  <div>
+                    <div className="text-xs text-zinc-500">Cloud Cover</div>
+                    <div className="text-sm font-medium">{selectedMarker.weather.cloudCover}%</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Alerts & Risk */}
+              <div className="space-y-3">
+                {selectedMarker.alert && (
+                  <div className={`p-4 rounded-xl border flex items-start gap-3 ${
+                    selectedMarker.weather.severity === 'warning' ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' : 
+                    'bg-fuchsia-500/10 border-fuchsia-500/20 text-fuchsia-400'
+                  }`}>
+                    <Warning size={20} weight="fill" className="mt-0.5 shrink-0" />
+                    <div>
+                      <div className="font-semibold text-sm mb-0.5">Active Alert</div>
+                      <div className="text-sm opacity-90">{selectedMarker.alert}</div>
+                    </div>
+                  </div>
+                )}
+                
+                <div className="bg-zinc-800/30 rounded-xl p-4 border border-zinc-800/50">
+                  <div className="font-medium text-sm text-zinc-300 mb-2">Road Risk Assessment</div>
+                  <div className="text-sm text-zinc-400 leading-relaxed">{selectedMarker.weather.riskAssessment}</div>
+                </div>
+
+                <div className="bg-zinc-800/30 rounded-xl p-4 border border-zinc-800/50">
+                  <div className="font-medium text-sm text-zinc-300 mb-2">Forecast</div>
+                  <div className="text-sm text-zinc-400 leading-relaxed">{selectedMarker.weather.forecastText}</div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
