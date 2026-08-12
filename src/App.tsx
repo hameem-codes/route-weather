@@ -69,22 +69,7 @@ const routeSegments = [
   }
 ];
 
-const geojson = {
-  type: 'FeatureCollection',
-  features: routeSegments.slice(0, -1).map((seg, i) => {
-    const nextSeg = routeSegments[i + 1];
-    return {
-      type: 'Feature',
-      properties: {
-        severity: nextSeg.weather.severity
-      },
-      geometry: {
-        type: 'LineString',
-        coordinates: [seg.coordinates, nextSeg.coordinates]
-      }
-    };
-  })
-};
+
 
 const rasterMapStyle = {
   version: 8,
@@ -128,41 +113,51 @@ function App() {
           style={{ width: '100%', height: '100%' }}
           mapStyle={rasterMapStyle as any}
         >
-          {/* Glowing Route Line */}
-          <Source id="route" type="geojson" data={geojson as any}>
-            <Layer
-              id="route-line"
-              type="line"
-              paint={{
-                'line-color': [
-                  'match',
-                  ['get', 'severity'],
-                  'safe', '#3b82f6',     // blue
-                  'warning', '#f59e0b',  // amber
-                  'critical', '#d946ef', // fuchsia
-                  '#a855f7'
-                ],
-                'line-width': 6,
-                'line-opacity': 0.8,
-                'line-blur': 2
-              }}
-            />
-            <Layer
-              id="route-line-core"
-              type="line"
-              paint={{
-                'line-color': [
-                  'match',
-                  ['get', 'severity'],
-                  'safe', '#93c5fd',     // light blue
-                  'warning', '#fcd34d',  // light amber
-                  'critical', '#f0abfc', // light fuchsia
-                  '#d8b4fe'
-                ],
-                'line-width': 2,
-              }}
-            />
-          </Source>
+          {/* Glowing Route Line Segments (CSP Compliant - No Expressions) */}
+          {routeSegments.slice(0, -1).map((seg, i) => {
+            const nextSeg = routeSegments[i + 1];
+            const severity = nextSeg.weather.severity;
+            
+            // Determine colors without Maplibre expressions to avoid unsafe-eval CSP errors
+            const glowColor = severity === 'safe' ? '#3b82f6' : severity === 'warning' ? '#f59e0b' : severity === 'critical' ? '#d946ef' : '#a855f7';
+            const coreColor = severity === 'safe' ? '#93c5fd' : severity === 'warning' ? '#fcd34d' : severity === 'critical' ? '#f0abfc' : '#d8b4fe';
+
+            const segmentGeoJson = {
+              type: 'FeatureCollection',
+              features: [
+                {
+                  type: 'Feature',
+                  geometry: {
+                    type: 'LineString',
+                    coordinates: [seg.coordinates, nextSeg.coordinates]
+                  }
+                }
+              ]
+            };
+
+            return (
+              <Source key={`source-${seg.id}`} id={`route-${seg.id}`} type="geojson" data={segmentGeoJson as any}>
+                <Layer
+                  id={`route-line-${seg.id}`}
+                  type="line"
+                  paint={{
+                    'line-color': glowColor,
+                    'line-width': 6,
+                    'line-opacity': 0.8,
+                    'line-blur': 2
+                  }}
+                />
+                <Layer
+                  id={`route-line-core-${seg.id}`}
+                  type="line"
+                  paint={{
+                    'line-color': coreColor,
+                    'line-width': 2,
+                  }}
+                />
+              </Source>
+            );
+          })}
 
           {/* Markers for Weather Points */}
           {routeSegments.map(seg => {
