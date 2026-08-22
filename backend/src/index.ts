@@ -15,56 +15,55 @@ type NominatimResponse = {
 }
 
 app.get('/api/route', async (c) => {
-  const origin = c.req.query('origin')
-  const destination = c.req.query('destination')
+  const originLat = c.req.query('originLat')
+  const originLng = c.req.query('originLng')
+  const destLat = c.req.query('destLat')
+  const destLng = c.req.query('destLng')
 
-  if (!origin || !destination) {
-    return c.json({ error: 'Origin and destination are required' }, 400)
+  if (!originLat || !originLng || !destLat || !destLng) {
+    return c.json({ error: 'Origin and destination coordinates (originLat, originLng, destLat, destLng) are required' }, 400)
   }
 
+  // Validate numbers
+  const oLat = parseFloat(originLat);
+  const oLng = parseFloat(originLng);
+  const dLat = parseFloat(destLat);
+  const dLng = parseFloat(destLng);
+
+  if (isNaN(oLat) || isNaN(oLng) || isNaN(dLat) || isNaN(dLng)) {
+     return c.json({ error: 'Coordinates must be valid numbers' }, 400)
+  }
+
+  // Define cache key
+  const cacheUrl = new URL(c.req.url);
+  const cacheKey = new Request(cacheUrl.toString());
+  const cache = caches.default;
+
   try {
-    // 1. Geocode Origin via Nominatim
-    const originRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(origin)}&format=json&limit=1`, {
-      headers: { 
-        'User-Agent': 'RouteWeatherApp/1.0 (support@routeweather.com)',
-        'Referer': 'http://localhost:5173'
-      }
-    });
-    
-    if (!originRes.ok) {
-       const text = await originRes.text();
-       throw new Error(`Nominatim origin failed: ${originRes.status} ${text}`);
+    const cachedResponse = await cache.match(cacheKey);
+    if (cachedResponse) {
+      const newResponse = new Response(cachedResponse.body, cachedResponse);
+      newResponse.headers.set('X-Cache', 'HIT');
+      return newResponse;
     }
-    const originData = await originRes.json() as NominatimResponse[];
-    if (!originData.length) return c.json({ error: "Origin not found" }, 404);
-    const originCoords = [parseFloat(originData[0].lon), parseFloat(originData[0].lat)];
 
-    // Nominatim asks to respect 1 req/sec limit.
-    await new Promise(r => setTimeout(r, 1000));
-
-    // 2. Geocode Destination via Nominatim
-    const destRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(destination)}&format=json&limit=1`, {
-      headers: { 
-        'User-Agent': 'RouteWeatherApp/1.0 (support@routeweather.com)',
-        'Referer': 'http://localhost:5173'
-      }
-    });
+    // Call OSRM
+    const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${oLng},${oLat};${dLng},${dLat}?overview=full&geometries=geojson`;
     
-    if (!destRes.ok) {
-       const text = await destRes.text();
-       throw new Error(`Nominatim dest failed: ${destRes.status} ${text}`);
-    }
-    const destData = await destRes.json() as NominatimResponse[];
-    if (!destData.length) return c.json({ error: "Destination not found" }, 404);
-    const destCoords = [parseFloat(destData[0].lon), parseFloat(destData[0].lat)];
+    // Setup AbortController for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
 
-    // 3. Fetch OSRM Route
-    const osrmRes = await fetch(`https://router.project-osrm.org/route/v1/driving/${originCoords[0]},${originCoords[1]};${destCoords[0]},${destCoords[1]}?overview=full&geometries=geojson`, {
+    const osrmRes = await fetch(osrmUrl, {
       headers: {
         'User-Agent': 'RouteWeatherApp/1.0 (support@routeweather.com)',
-        'Referer': 'http://localhost:5173'
-      }
+        'Referer': 'https://routeweather.com'
+      },
+      signal: controller.signal
     });
+
+    clearTimeout(timeoutId);
+
     if (!osrmRes.ok) {
        const text = await osrmRes.text();
        throw new Error(`OSRM failed: ${osrmRes.status} ${text}`);
@@ -76,22 +75,35 @@ app.get('/api/route', async (c) => {
       return c.json({ error: "Route not found" }, 404);
     }
 
-    return c.json({
+    const route = osrmData.routes[0];
+
+    const result = {
       success: true,
       data: {
-        origin: {
-          name: originData[0].display_name,
-          coords: originCoords
-        },
-        destination: {
-          name: destData[0].display_name,
-          coords: destCoords
-        },
-        osrm: osrmData
+        geometry: route.geometry,
+        distance: route.distance, // in meters
+        duration: route.duration, // in seconds
+        startCoordinate: [oLng, oLat],
+        destinationCoordinate: [dLng, dLat]
+      }
+    };
+
+    const responseToCache = new Response(JSON.stringify(result), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, max-age=86400', // 24 hours
+        'Access-Control-Allow-Origin': '*'
       }
     });
 
+    c.executionCtx.waitUntil(cache.put(cacheKey, responseToCache.clone()));
+
+    return responseToCache;
   } catch (err: any) {
+    if (err.name === 'AbortError') {
+      return c.json({ error: 'Request to routing service timed out' }, 504);
+    }
     return c.json({ error: err.message }, 500)
   }
 })

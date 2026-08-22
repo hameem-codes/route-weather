@@ -216,20 +216,35 @@ function App() {
     const dInput = overrideDest || destInput;
     
     try {
-      // Backend unified routing call
-      // The backend handles Nominatim geocoding (with rate limiting) and OSRM routing.
-      const routeRes = await fetch(`http://localhost:8787/api/route?origin=${encodeURIComponent(oInput)}&destination=${encodeURIComponent(dInput)}`);
+      // 1. Geocode Origin
+      const originRes = await fetch(`http://localhost:8787/api/geocode?q=${encodeURIComponent(oInput)}`);
+      if (!originRes.ok) {
+        const err = await originRes.json();
+        throw new Error(err.error || "Failed to geocode origin");
+      }
+      const originData = await originRes.json();
+
+      // 2. Geocode Destination
+      const destRes = await fetch(`http://localhost:8787/api/geocode?q=${encodeURIComponent(dInput)}`);
+      if (!destRes.ok) {
+        const err = await destRes.json();
+        throw new Error(err.error || "Failed to geocode destination");
+      }
+      const destData = await destRes.json();
+
+      // 3. Fetch Route
+      const routeUrl = `http://localhost:8787/api/route?originLat=${originData.latitude}&originLng=${originData.longitude}&destLat=${destData.latitude}&destLng=${destData.longitude}`;
+      const routeRes = await fetch(routeUrl);
+      
       if (!routeRes.ok) {
         const errorData = await routeRes.json();
         throw new Error(errorData.error || "Failed to fetch route");
       }
       
       const routeResponse = await routeRes.json();
-      const osrmData = routeResponse.data.osrm;
+      const routeResult = routeResponse.data;
 
-      if (osrmData.code !== 'Ok' || !osrmData.routes.length) throw new Error("Route not found");
-
-      const routeGeometry = osrmData.routes[0].geometry; // GeoJSON LineString
+      const routeGeometry = routeResult.geometry; // GeoJSON LineString
       
       let cumulativeDistances = [0];
       for (let i = 1; i < routeGeometry.coordinates.length; i++) {
@@ -240,7 +255,7 @@ function App() {
       const totalDistanceMi = cumulativeDistances[cumulativeDistances.length - 1];
       
       const routeFeature = { type: 'Feature', geometry: routeGeometry, properties: {} } as any;
-      const totalTimeMins = Math.round(osrmData.routes[0].duration / 60);
+      const totalTimeMins = Math.round(routeResult.duration / 60);
 
       // 4. Create Weather Checkpoints evenly spaced along the actual road
       const segments = [];
