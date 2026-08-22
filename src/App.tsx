@@ -28,6 +28,7 @@ import type { MapRef } from 'react-map-gl/maplibre';
 import length from '@turf/length';
 import along from '@turf/along';
 import lineSlice from '@turf/line-slice';
+import distance from '@turf/distance';
 import { point } from '@turf/helpers';
 import { toPng } from 'html-to-image';
 
@@ -125,7 +126,44 @@ const rasterMapStyle = {
   ]
 };
 
-
+function getSlicedCoordinates(coords: number[][], dists: number[], startDist: number, endDist: number) {
+  const result: number[][] = [];
+  if (coords.length === 0 || startDist >= endDist) return result;
+  
+  for (let i = 1; i < dists.length; i++) {
+    if (dists[i] >= startDist && result.length === 0) {
+      if (dists[i] === startDist) {
+         result.push([...coords[i]]);
+      } else {
+         const ratio = (startDist - dists[i-1]) / (dists[i] - dists[i-1]);
+         result.push([
+           coords[i-1][0] + (coords[i][0] - coords[i-1][0]) * ratio,
+           coords[i-1][1] + (coords[i][1] - coords[i-1][1]) * ratio
+         ]);
+      }
+      
+      for (let j = i; j < dists.length; j++) {
+         if (dists[j] > startDist && dists[j] < endDist) {
+           result.push([...coords[j]]);
+         }
+         if (dists[j] >= endDist) {
+           if (dists[j] === endDist) {
+             result.push([...coords[j]]);
+           } else {
+             const endRatio = (endDist - dists[j-1]) / (dists[j] - dists[j-1]);
+             result.push([
+               coords[j-1][0] + (coords[j][0] - coords[j-1][0]) * endRatio,
+               coords[j-1][1] + (coords[j][1] - coords[j-1][1]) * endRatio
+             ]);
+           }
+           break;
+         }
+      }
+      break;
+    }
+  }
+  return result;
+}
 
 function App() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -141,12 +179,12 @@ function App() {
     totalDistanceMi: number;
     totalTimeMins: number;
     routeLine: any;
+    cumulativeDistances: number[];
     segments: any[];
   } | null>(null);
 
   // Animation State
   const [routeState, setRouteState] = useState<'hidden' | 'animating' | 'visible'>('hidden');
-  const [vehiclePosition, setVehiclePosition] = useState<[number, number] | null>(null);
   const [progress, setProgress] = useState(0); // 0 to 1
 
   // Marker & Share Interaction State
@@ -185,9 +223,16 @@ function App() {
       if (osrmData.code !== 'Ok' || !osrmData.routes.length) throw new Error("Route not found");
 
       const routeGeometry = osrmData.routes[0].geometry; // GeoJSON LineString
-      const routeFeature = { type: 'Feature', geometry: routeGeometry, properties: {} } as any;
       
-      const totalDistanceMi = length(routeFeature, { units: 'miles' });
+      let cumulativeDistances = [0];
+      for (let i = 1; i < routeGeometry.coordinates.length; i++) {
+        const p1 = point(routeGeometry.coordinates[i-1]);
+        const p2 = point(routeGeometry.coordinates[i]);
+        cumulativeDistances.push(cumulativeDistances[i-1] + distance(p1, p2, { units: 'miles' }));
+      }
+      const totalDistanceMi = cumulativeDistances[cumulativeDistances.length - 1];
+      
+      const routeFeature = { type: 'Feature', geometry: routeGeometry, properties: {} } as any;
       const totalTimeMins = Math.round(osrmData.routes[0].duration / 60);
 
       // 4. Create Weather Checkpoints evenly spaced along the actual road
@@ -217,6 +262,7 @@ function App() {
         totalDistanceMi,
         totalTimeMins,
         routeLine: routeFeature,
+        cumulativeDistances,
         segments
       });
 
@@ -236,7 +282,6 @@ function App() {
       // Auto start animation
       setRouteState('animating');
       setProgress(0);
-      setVehiclePosition(segments[0].coordinates as [number, number]);
 
       // Update URL with search params for sharing
       const url = new URL(window.location.href);
@@ -257,7 +302,9 @@ function App() {
 
     let animationFrame: number;
     let startTime: number | null = null;
-    const ANIMATION_DURATION_MS = 6000; // 6 seconds
+    
+    // Dynamic duration based on route length: roughly 30ms per mile, bounded between 4s and 15s
+    const ANIMATION_DURATION_MS = Math.max(4000, Math.min(15000, routeData.totalDistanceMi * 30));
 
     const animate = (timestamp: number) => {
       if (!startTime) startTime = timestamp;
@@ -268,18 +315,11 @@ function App() {
       const easeInOut = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
 
       setProgress(easeInOut);
-
-      const currentDistance = routeData.totalDistanceMi * easeInOut;
       
       if (easeInOut >= 1) {
         setRouteState('visible');
-        setVehiclePosition(routeData.segments[routeData.segments.length - 1].coordinates as [number, number]);
         return;
       }
-
-      // Calculate vehicle position exactly along the real OSRM road geometry
-      const currentPoint = along(routeData.routeLine, currentDistance, { units: 'miles' });
-      setVehiclePosition(currentPoint.geometry.coordinates as [number, number]);
 
       animationFrame = requestAnimationFrame(animate);
     };
@@ -482,12 +522,10 @@ function App() {
 
             if (currentDist >= distToEnd) {
               // Fully drawn segment
-              const slice = lineSlice(point(seg.coordinates), point(nextSeg.coordinates), routeData.routeLine);
-              segmentGeoJsonCoords = slice.geometry.coordinates;
+              segmentGeoJsonCoords = getSlicedCoordinates(routeData.routeLine.geometry.coordinates, routeData.cumulativeDistances, distToStart, distToEnd);
             } else if (currentDist > distToStart) {
               // Partially drawn segment
-              const slice = lineSlice(point(seg.coordinates), point(vehiclePosition || seg.coordinates), routeData.routeLine);
-              segmentGeoJsonCoords = slice.geometry.coordinates;
+              segmentGeoJsonCoords = getSlicedCoordinates(routeData.routeLine.geometry.coordinates, routeData.cumulativeDistances, distToStart, currentDist);
             } else {
               // Not drawn yet
               return null;
@@ -534,10 +572,33 @@ function App() {
           })}
 
           {/* Vehicle Indicator - Hidden in Snapshot Mode */}
-          {!isSnapshotMode && vehiclePosition && (
-            <Marker
-              longitude={vehiclePosition[0]}
-              latitude={vehiclePosition[1]}
+          {!isSnapshotMode && routeData && (routeState === 'animating' || routeState === 'visible') && (() => {
+            const currentDistance = routeData.totalDistanceMi * progress;
+            let currentVehiclePos: [number, number] | null = null;
+            
+            if (progress >= 1) {
+              currentVehiclePos = routeData.segments[routeData.segments.length - 1].coordinates as [number, number];
+            } else if (progress > 0) {
+              for (let i = 1; i < routeData.cumulativeDistances.length; i++) {
+                if (routeData.cumulativeDistances[i] >= currentDistance) {
+                  const ratio = (currentDistance - routeData.cumulativeDistances[i-1]) / (routeData.cumulativeDistances[i] - routeData.cumulativeDistances[i-1]);
+                  currentVehiclePos = [
+                    routeData.routeLine.geometry.coordinates[i-1][0] + (routeData.routeLine.geometry.coordinates[i][0] - routeData.routeLine.geometry.coordinates[i-1][0]) * ratio,
+                    routeData.routeLine.geometry.coordinates[i-1][1] + (routeData.routeLine.geometry.coordinates[i][1] - routeData.routeLine.geometry.coordinates[i-1][1]) * ratio
+                  ];
+                  break;
+                }
+              }
+            } else {
+              currentVehiclePos = routeData.segments[0].coordinates as [number, number];
+            }
+            
+            if (!currentVehiclePos) return null;
+            
+            return (
+              <Marker
+                longitude={currentVehiclePos[0]}
+                latitude={currentVehiclePos[1]}
               anchor="center"
               style={{ zIndex: 40 }}
             >
