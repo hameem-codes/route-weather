@@ -1,7 +1,7 @@
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
-// .wrangler/tmp/bundle-vmZpaS/checked-fetch.js
+// .wrangler/tmp/bundle-Bp7PlW/checked-fetch.js
 var urls = /* @__PURE__ */ new Set();
 function checkURL(request, init) {
   const url = request instanceof URL ? request : new URL(
@@ -24,21 +24,6 @@ globalThis.fetch = new Proxy(globalThis.fetch, {
     const [request, init] = argArray;
     checkURL(request, init);
     return Reflect.apply(target, thisArg, argArray);
-  }
-});
-
-// .wrangler/tmp/bundle-vmZpaS/strip-cf-connecting-ip-header.js
-function stripCfConnectingIPHeader(input, init) {
-  const request = new Request(input, init);
-  request.headers.delete("CF-Connecting-IP");
-  return request;
-}
-__name(stripCfConnectingIPHeader, "stripCfConnectingIPHeader");
-globalThis.fetch = new Proxy(globalThis.fetch, {
-  apply(target, thisArg, argArray) {
-    return Reflect.apply(target, thisArg, [
-      stripCfConnectingIPHeader.apply(null, argArray)
-    ]);
   }
 });
 
@@ -392,7 +377,10 @@ var getQueryParams = /* @__PURE__ */ __name((url, key) => {
 var decodeURIComponent_ = decodeURIComponent;
 
 // node_modules/hono/dist/request.js
-var HonoRequest = /* @__PURE__ */ __name(class {
+var HonoRequest = class {
+  static {
+    __name(this, "HonoRequest");
+  }
   /**
    * `.raw` can get the raw Request object.
    *
@@ -472,7 +460,7 @@ var HonoRequest = /* @__PURE__ */ __name(class {
   async parseBody(options) {
     return parseBody(this, options);
   }
-  #cachedBody = (key) => {
+  #cachedBody = /* @__PURE__ */ __name((key) => {
     const { bodyCache, raw: raw2 } = this;
     const cachedBody = bodyCache[key];
     if (cachedBody) {
@@ -487,7 +475,7 @@ var HonoRequest = /* @__PURE__ */ __name(class {
       });
     }
     return bodyCache[key] = raw2[key]();
-  };
+  }, "#cachedBody");
   /**
    * `.json()` can parse Request body of type `application/json`
    *
@@ -670,7 +658,7 @@ var HonoRequest = /* @__PURE__ */ __name(class {
   get routePath() {
     return this.#matchResult[0].map(([[, route]]) => route)[this.routeIndex].path;
   }
-}, "HonoRequest");
+};
 
 // node_modules/hono/dist/utils/html.js
 var HtmlEscapedCallbackPhase = {
@@ -723,7 +711,10 @@ var setDefaultContentType = /* @__PURE__ */ __name((contentType, headers) => {
   };
 }, "setDefaultContentType");
 var createResponseInstance = /* @__PURE__ */ __name((body, init) => new Response(body, init), "createResponseInstance");
-var Context = /* @__PURE__ */ __name(class {
+var Context = class {
+  static {
+    __name(this, "Context");
+  }
   #rawRequest;
   #req;
   /**
@@ -863,23 +854,23 @@ var Context = /* @__PURE__ */ __name(class {
    * })
    * ```
    */
-  render = (...args) => {
+  render = /* @__PURE__ */ __name((...args) => {
     this.#renderer ??= (content) => this.html(content);
     return this.#renderer(...args);
-  };
+  }, "render");
   /**
    * Sets the layout for the response.
    *
    * @param layout - The layout to set.
    * @returns The layout function.
    */
-  setLayout = (layout) => this.#layout = layout;
+  setLayout = /* @__PURE__ */ __name((layout) => this.#layout = layout, "setLayout");
   /**
    * Gets the current layout for the response.
    *
    * @returns The current layout function.
    */
-  getLayout = () => this.#layout;
+  getLayout = /* @__PURE__ */ __name(() => this.#layout, "getLayout");
   /**
    * `.setRenderer()` can set the layout in the custom middleware.
    *
@@ -901,9 +892,9 @@ var Context = /* @__PURE__ */ __name(class {
    * })
    * ```
    */
-  setRenderer = (renderer) => {
+  setRenderer = /* @__PURE__ */ __name((renderer) => {
     this.#renderer = renderer;
-  };
+  }, "setRenderer");
   /**
    * `.header()` can set headers.
    *
@@ -924,7 +915,7 @@ var Context = /* @__PURE__ */ __name(class {
    * })
    * ```
    */
-  header = (name, value, options) => {
+  header = /* @__PURE__ */ __name((name, value, options) => {
     if (this.finalized) {
       this.#res = createResponseInstance(this.#res.body, this.#res);
     }
@@ -936,10 +927,10 @@ var Context = /* @__PURE__ */ __name(class {
     } else {
       headers.set(name, value);
     }
-  };
-  status = (status) => {
+  }, "header");
+  status = /* @__PURE__ */ __name((status) => {
     this.#status = status;
-  };
+  }, "status");
   /**
    * `.set()` can set the value specified by the key.
    *
@@ -953,10 +944,10 @@ var Context = /* @__PURE__ */ __name(class {
    * })
    * ```
    */
-  set = (key, value) => {
+  set = /* @__PURE__ */ __name((key, value) => {
     this.#var ??= /* @__PURE__ */ new Map();
     this.#var.set(key, value);
-  };
+  }, "set");
   /**
    * `.get()` can use the value specified by the key.
    *
@@ -970,9 +961,9 @@ var Context = /* @__PURE__ */ __name(class {
    * })
    * ```
    */
-  get = (key) => {
+  get = /* @__PURE__ */ __name((key) => {
     return this.#var ? this.#var.get(key) : void 0;
-  };
+  }, "get");
   /**
    * `.var` can access the value of a variable.
    *
@@ -1032,7 +1023,7 @@ var Context = /* @__PURE__ */ __name(class {
       headers: responseHeaders ?? headers
     });
   }
-  newResponse = (...args) => this.#newResponse(...args);
+  newResponse = /* @__PURE__ */ __name((...args) => this.#newResponse(...args), "newResponse");
   /**
    * `.body()` can return the HTTP response.
    * You can set headers with `.header()` and set HTTP status code with `.status`.
@@ -1054,7 +1045,7 @@ var Context = /* @__PURE__ */ __name(class {
    * })
    * ```
    */
-  body = (data, arg, headers) => this.#newResponse(data, arg, headers);
+  body = /* @__PURE__ */ __name((data, arg, headers) => this.#newResponse(data, arg, headers), "body");
   /**
    * `.text()` can render text as `Content-Type:text/plain`.
    *
@@ -1067,13 +1058,13 @@ var Context = /* @__PURE__ */ __name(class {
    * })
    * ```
    */
-  text = (text, arg, headers) => {
+  text = /* @__PURE__ */ __name((text, arg, headers) => {
     return !this.#preparedHeaders && !this.#status && !arg && !headers && !this.finalized ? new Response(text) : this.#newResponse(
       text,
       arg,
       setDefaultContentType(TEXT_PLAIN, headers)
     );
-  };
+  }, "text");
   /**
    * `.json()` can render JSON as `Content-Type:application/json`.
    *
@@ -1086,17 +1077,17 @@ var Context = /* @__PURE__ */ __name(class {
    * })
    * ```
    */
-  json = (object, arg, headers) => {
+  json = /* @__PURE__ */ __name((object, arg, headers) => {
     return this.#newResponse(
       JSON.stringify(object),
       arg,
       setDefaultContentType("application/json", headers)
     );
-  };
-  html = (html, arg, headers) => {
+  }, "json");
+  html = /* @__PURE__ */ __name((html, arg, headers) => {
     const res = /* @__PURE__ */ __name((html2) => this.#newResponse(html2, arg, setDefaultContentType("text/html; charset=UTF-8", headers)), "res");
     return typeof html === "object" ? resolveCallback(html, HtmlEscapedCallbackPhase.Stringify, false, {}).then(res) : res(html);
-  };
+  }, "html");
   /**
    * `.redirect()` can Redirect, default status code is 302.
    *
@@ -1112,7 +1103,7 @@ var Context = /* @__PURE__ */ __name(class {
    * })
    * ```
    */
-  redirect = (location, status) => {
+  redirect = /* @__PURE__ */ __name((location, status) => {
     const locationString = String(location);
     this.header(
       "Location",
@@ -1121,7 +1112,7 @@ var Context = /* @__PURE__ */ __name(class {
       !/[^\x00-\xFF]/.test(locationString) ? locationString : encodeURI(locationString)
     );
     return this.newResponse(null, status ?? 302);
-  };
+  }, "redirect");
   /**
    * `.notFound()` can return the Not Found Response.
    *
@@ -1134,19 +1125,22 @@ var Context = /* @__PURE__ */ __name(class {
    * })
    * ```
    */
-  notFound = () => {
+  notFound = /* @__PURE__ */ __name(() => {
     this.#notFoundHandler ??= () => createResponseInstance();
     return this.#notFoundHandler(this);
-  };
-}, "Context");
+  }, "notFound");
+};
 
 // node_modules/hono/dist/router.js
 var METHOD_NAME_ALL = "ALL";
 var METHOD_NAME_ALL_LOWERCASE = "all";
 var METHODS = ["get", "post", "put", "delete", "options", "patch", "query"];
 var MESSAGE_MATCHER_IS_ALREADY_BUILT = "Can not add a route since the matcher is already built.";
-var UnsupportedPathError = /* @__PURE__ */ __name(class extends Error {
-}, "UnsupportedPathError");
+var UnsupportedPathError = class extends Error {
+  static {
+    __name(this, "UnsupportedPathError");
+  }
+};
 
 // node_modules/hono/dist/utils/constants.js
 var COMPOSED_HANDLER = "__COMPOSED_HANDLER";
@@ -1163,7 +1157,10 @@ var errorHandler = /* @__PURE__ */ __name((err, c) => {
   console.error(err);
   return c.text("Internal Server Error", 500);
 }, "errorHandler");
-var Hono = /* @__PURE__ */ __name(class _Hono {
+var Hono = class _Hono {
+  static {
+    __name(this, "_Hono");
+  }
   get;
   post;
   put;
@@ -1305,10 +1302,10 @@ var Hono = /* @__PURE__ */ __name(class _Hono {
    * })
    * ```
    */
-  onError = (handler) => {
+  onError = /* @__PURE__ */ __name((handler) => {
     this.errorHandler = handler;
     return this;
-  };
+  }, "onError");
   /**
    * `.notFound()` allows you to customize a Not Found Response.
    *
@@ -1324,10 +1321,10 @@ var Hono = /* @__PURE__ */ __name(class _Hono {
    * })
    * ```
    */
-  notFound = (handler) => {
+  notFound = /* @__PURE__ */ __name((handler) => {
     this.#notFoundHandler = handler;
     return this;
-  };
+  }, "notFound");
   /**
    * `.mount()` allows you to mount applications built with other frameworks into your Hono application.
    *
@@ -1475,9 +1472,9 @@ var Hono = /* @__PURE__ */ __name(class _Hono {
    * @returns {Response | Promise<Response>} response of request
    *
    */
-  fetch = (request, ...rest) => {
+  fetch = /* @__PURE__ */ __name((request, ...rest) => {
     return this.#dispatch(request, rest[1], rest[0], request.method);
-  };
+  }, "fetch");
   /**
    * `.request()` is a useful method for testing.
    * You can pass a URL or pathname to send a GET request.
@@ -1490,7 +1487,7 @@ var Hono = /* @__PURE__ */ __name(class _Hono {
    * ```
    * @see https://hono.dev/docs/api/hono#request
    */
-  request = (input, requestInit, Env, executionCtx) => {
+  request = /* @__PURE__ */ __name((input, requestInit, Env, executionCtx) => {
     if (input instanceof Request) {
       return this.fetch(requestInit ? new Request(input, requestInit) : input, Env, executionCtx);
     }
@@ -1503,7 +1500,7 @@ var Hono = /* @__PURE__ */ __name(class _Hono {
       Env,
       executionCtx
     );
-  };
+  }, "request");
   /**
    * `.fire()` automatically adds a global fetch event listener.
    * This can be useful for environments that adhere to the Service Worker API, such as non-ES module Cloudflare Workers.
@@ -1521,18 +1518,18 @@ var Hono = /* @__PURE__ */ __name(class _Hono {
    * @see https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API
    * @see https://developers.cloudflare.com/workers/reference/migrate-to-module-workers/
    */
-  fire = () => {
+  fire = /* @__PURE__ */ __name(() => {
     addEventListener("fetch", (event) => {
       event.respondWith(this.#dispatch(event.request, event, void 0, event.request.method));
     });
-  };
-}, "_Hono");
+  }, "fire");
+};
 
 // node_modules/hono/dist/router/reg-exp-router/matcher.js
 var emptyParam = [];
 function match(method, path) {
   const matchers = this.buildAllMatchers();
-  const match2 = /* @__PURE__ */ __name((method2, path2) => {
+  const match2 = /* @__PURE__ */ __name(((method2, path2) => {
     const matcher = matchers[method2] || matchers[METHOD_NAME_ALL];
     const staticMatch = matcher[2][path2];
     if (staticMatch) {
@@ -1544,7 +1541,7 @@ function match(method, path) {
     }
     const index = match3.indexOf("", 1);
     return [matcher[1][index], match3];
-  }, "match2");
+  }), "match2");
   this.match = match2;
   return match2(method, path);
 }
@@ -1576,7 +1573,10 @@ function compareKey(a, b) {
   return a.length === b.length ? a < b ? -1 : 1 : b.length - a.length;
 }
 __name(compareKey, "compareKey");
-var Node = /* @__PURE__ */ __name(class _Node {
+var Node = class _Node {
+  static {
+    __name(this, "_Node");
+  }
   // handler index of a dynamic path, or -1 for a static path terminal
   #index;
   #varIndex;
@@ -1656,10 +1656,13 @@ var Node = /* @__PURE__ */ __name(class _Node {
     }
     return "(?:" + strList.join("|") + ")";
   }
-}, "_Node");
+};
 
 // node_modules/hono/dist/router/reg-exp-router/trie.js
-var Trie = /* @__PURE__ */ __name(class {
+var Trie = class {
+  static {
+    __name(this, "Trie");
+  }
   #context = { varIndex: 0 };
   #root = new Node();
   #index = 0;
@@ -1720,7 +1723,7 @@ var Trie = /* @__PURE__ */ __name(class {
     });
     return [new RegExp(`^${regexp}`), indexReplacementMap, paramReplacementMap];
   }
-}, "Trie");
+};
 
 // node_modules/hono/dist/router/reg-exp-router/router.js
 var wildcardRegExpCache = /* @__PURE__ */ Object.create(null);
@@ -1749,7 +1752,10 @@ function findMiddleware(middleware, path) {
   return void 0;
 }
 __name(findMiddleware, "findMiddleware");
-var RegExpRouter = /* @__PURE__ */ __name(class {
+var RegExpRouter = class {
+  static {
+    __name(this, "RegExpRouter");
+  }
   name = "RegExpRouter";
   #middleware;
   #routes;
@@ -1881,10 +1887,13 @@ var RegExpRouter = /* @__PURE__ */ __name(class {
     }
     return [regexp, handlerMap, staticMap];
   }
-}, "RegExpRouter");
+};
 
 // node_modules/hono/dist/router/smart-router/router.js
-var SmartRouter = /* @__PURE__ */ __name(class {
+var SmartRouter = class {
+  static {
+    __name(this, "SmartRouter");
+  }
   name = "SmartRouter";
   #routers = [];
   #routes = [];
@@ -1936,12 +1945,15 @@ var SmartRouter = /* @__PURE__ */ __name(class {
     }
     return this.#routers[0];
   }
-}, "SmartRouter");
+};
 
 // node_modules/hono/dist/router/trie-router/node.js
 var emptyParams = /* @__PURE__ */ Object.create(null);
 var order = 0;
-var Node2 = /* @__PURE__ */ __name(class _Node2 {
+var Node2 = class _Node2 {
+  static {
+    __name(this, "_Node");
+  }
   #methods = [];
   #children = /* @__PURE__ */ Object.create(null);
   #patterns = [];
@@ -2096,10 +2108,13 @@ var Node2 = /* @__PURE__ */ __name(class _Node2 {
     }
     return [handlerSets.map(({ handler, params }) => [handler, params])];
   }
-}, "_Node");
+};
 
 // node_modules/hono/dist/router/trie-router/router.js
-var TrieRouter = /* @__PURE__ */ __name(class {
+var TrieRouter = class {
+  static {
+    __name(this, "TrieRouter");
+  }
   name = "TrieRouter";
   #node = new Node2();
   add(method, path, handler) {
@@ -2110,10 +2125,13 @@ var TrieRouter = /* @__PURE__ */ __name(class {
   match(method, path) {
     return this.#node.search(method, path);
   }
-}, "TrieRouter");
+};
 
 // node_modules/hono/dist/hono.js
-var Hono2 = /* @__PURE__ */ __name(class extends Hono {
+var Hono2 = class extends Hono {
+  static {
+    __name(this, "Hono");
+  }
   /**
    * Creates an instance of the Hono class.
    *
@@ -2125,7 +2143,7 @@ var Hono2 = /* @__PURE__ */ __name(class extends Hono {
       routers: [new RegExpRouter(), new TrieRouter()]
     });
   }
-}, "Hono");
+};
 
 // node_modules/hono/dist/middleware/cors/index.js
 var cors = /* @__PURE__ */ __name((options) => {
@@ -2441,26 +2459,55 @@ var index_default2 = along;
 
 // src/index.ts
 var app = new Hono2();
+var sendError = /* @__PURE__ */ __name((c, code, message, status = 400) => {
+  return c.json({
+    success: false,
+    error: { code, message }
+  }, status);
+}, "sendError");
 app.use("/api/*", cors({
-  origin: "*",
-  // Allows frontend to call the API during dev
+  origin: "http://localhost:5173",
+  // Restrict to the exact frontend origin
   allowMethods: ["GET", "POST", "OPTIONS"]
 }));
+app.use("/api/*", async (c, next) => {
+  if (c.req.method === "POST") {
+    const contentLength = c.req.header("content-length");
+    if (contentLength && parseInt(contentLength, 10) > 10240) {
+      return sendError(c, "PAYLOAD_TOO_LARGE", "Request payload exceeds maximum allowed size (10KB)", 413);
+    }
+  }
+  await next();
+});
+var fetchWithTimeout = /* @__PURE__ */ __name(async (url, options, timeoutMs) => {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(id);
+    return response;
+  } catch (error) {
+    clearTimeout(id);
+    throw error;
+  }
+}, "fetchWithTimeout");
 app.get("/api/route", async (c) => {
   const originLat = c.req.query("originLat");
   const originLng = c.req.query("originLng");
   const destLat = c.req.query("destLat");
   const destLng = c.req.query("destLng");
   if (!originLat || !originLng || !destLat || !destLng) {
-    return c.json({ error: "Origin and destination coordinates (originLat, originLng, destLat, destLng) are required" }, 400);
+    return sendError(c, "VALIDATION_ERROR", "Origin and destination coordinates are required");
   }
   const oLat = parseFloat(originLat);
   const oLng = parseFloat(originLng);
   const dLat = parseFloat(destLat);
   const dLng = parseFloat(destLng);
   if (isNaN(oLat) || isNaN(oLng) || isNaN(dLat) || isNaN(dLng)) {
-    return c.json({ error: "Coordinates must be valid numbers" }, 400);
+    return sendError(c, "VALIDATION_ERROR", "Coordinates must be valid numbers");
   }
+  if (oLat < -90 || oLat > 90 || dLat < -90 || dLat > 90) return sendError(c, "VALIDATION_ERROR", "Latitude must be between -90 and 90");
+  if (oLng < -180 || oLng > 180 || dLng < -180 || dLng > 180) return sendError(c, "VALIDATION_ERROR", "Longitude must be between -180 and 180");
   const cacheUrl = new URL(c.req.url);
   const cacheKey = new Request(cacheUrl.toString());
   const cache = caches.default;
@@ -2472,23 +2519,17 @@ app.get("/api/route", async (c) => {
       return newResponse;
     }
     const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${oLng},${oLat};${dLng},${dLat}?overview=full&geometries=geojson`;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1e4);
-    const osrmRes = await fetch(osrmUrl, {
+    const osrmRes = await fetchWithTimeout(osrmUrl, {
       headers: {
         "User-Agent": "RouteWeatherApp/1.0 (support@routeweather.com)",
         "Referer": "https://routeweather.com"
-      },
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
-    if (!osrmRes.ok) {
-      const text = await osrmRes.text();
-      throw new Error(`OSRM failed: ${osrmRes.status} ${text}`);
-    }
+      }
+    }, 1e4);
+    if (osrmRes.status === 429) throw new Error("RATE_LIMIT_EXCEEDED");
+    if (!osrmRes.ok) throw new Error("UPSTREAM_SERVICE_FAILED");
     const osrmData = await osrmRes.json();
     if (osrmData.code !== "Ok" || !osrmData.routes.length) {
-      return c.json({ error: "Route not found" }, 404);
+      return sendError(c, "ROUTE_NOT_FOUND", "Could not find a valid route between coordinates", 404);
     }
     const route = osrmData.routes[0];
     const result = {
@@ -2496,9 +2537,7 @@ app.get("/api/route", async (c) => {
       data: {
         geometry: route.geometry,
         distance: route.distance,
-        // in meters
         duration: route.duration,
-        // in seconds
         startCoordinate: [oLng, oLat],
         destinationCoordinate: [dLng, dLat]
       }
@@ -2508,28 +2547,26 @@ app.get("/api/route", async (c) => {
       headers: {
         "Content-Type": "application/json",
         "Cache-Control": "public, max-age=86400",
-        // 24 hours
-        "Access-Control-Allow-Origin": "*"
+        "Access-Control-Allow-Origin": "http://localhost:5173"
       }
     });
     c.executionCtx.waitUntil(cache.put(cacheKey, responseToCache.clone()));
     return responseToCache;
   } catch (err) {
-    if (err.name === "AbortError") {
-      return c.json({ error: "Request to routing service timed out" }, 504);
-    }
-    return c.json({ error: err.message }, 500);
+    if (err.name === "AbortError") return sendError(c, "UPSTREAM_TIMEOUT", "Request to routing service timed out", 504);
+    if (err.message === "RATE_LIMIT_EXCEEDED") return sendError(c, "RATE_LIMIT_EXCEEDED", "Routing service rate limit exceeded", 429);
+    return sendError(c, "INTERNAL_ERROR", "An unexpected error occurred while fetching route", 500);
   }
 });
 app.get("/api/geocode", async (c) => {
   const q = c.req.query("q");
-  if (!q) {
-    return c.json({ error: 'Query parameter "q" is required' }, 400);
+  if (!q || q.trim().length < 2) {
+    return sendError(c, "VALIDATION_ERROR", "Query must be at least 2 characters long");
+  }
+  if (q.length > 100) {
+    return sendError(c, "VALIDATION_ERROR", "Query too long");
   }
   const query = q.trim();
-  if (query.length < 2) {
-    return c.json({ error: "Query too short" }, 400);
-  }
   const cacheUrl = new URL(c.req.url);
   cacheUrl.pathname = "/api/geocode";
   cacheUrl.search = `?q=${encodeURIComponent(query.toLowerCase())}`;
@@ -2543,19 +2580,17 @@ app.get("/api/geocode", async (c) => {
       return newResponse;
     }
     const nominatimUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`;
-    const res = await fetch(nominatimUrl, {
+    const res = await fetchWithTimeout(nominatimUrl, {
       headers: {
         "User-Agent": "RouteWeatherApp/1.0 (support@routeweather.com)",
         "Referer": "https://routeweather.com"
       }
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Nominatim failed: ${res.status} ${text}`);
-    }
+    }, 8e3);
+    if (res.status === 429) throw new Error("RATE_LIMIT_EXCEEDED");
+    if (!res.ok) throw new Error("UPSTREAM_SERVICE_FAILED");
     const data = await res.json();
     if (!data || data.length === 0) {
-      return c.json({ error: "Location not found" }, 404);
+      return sendError(c, "LOCATION_NOT_FOUND", `Could not find location: ${query}`, 404);
     }
     const result = {
       name: query,
@@ -2563,29 +2598,38 @@ app.get("/api/geocode", async (c) => {
       longitude: parseFloat(data[0].lon),
       displayName: data[0].display_name
     };
-    const responseToCache = new Response(JSON.stringify(result), {
+    const responseToCache = new Response(JSON.stringify({ success: true, data: result }), {
       status: 200,
       headers: {
         "Content-Type": "application/json",
         "Cache-Control": "public, max-age=86400",
-        // Cache for 24 hours
-        "Access-Control-Allow-Origin": "*"
+        "Access-Control-Allow-Origin": "http://localhost:5173"
       }
     });
     c.executionCtx.waitUntil(cache.put(cacheKey, responseToCache.clone()));
     return responseToCache;
   } catch (err) {
-    return c.json({ error: err.message }, 500);
+    if (err.name === "AbortError") return sendError(c, "UPSTREAM_TIMEOUT", "Request to geocoding service timed out", 504);
+    if (err.message === "RATE_LIMIT_EXCEEDED") return sendError(c, "RATE_LIMIT_EXCEEDED", "Geocoding service rate limit exceeded", 429);
+    return sendError(c, "INTERNAL_ERROR", "An unexpected error occurred during geocoding", 500);
   }
 });
 app.post("/api/weather/route", async (c) => {
   try {
-    const body = await c.req.json();
+    let body;
+    try {
+      body = await c.req.json();
+    } catch {
+      return sendError(c, "INVALID_JSON", "Malformed JSON payload");
+    }
     const { geometry, duration, originName, destName } = body;
-    if (!geometry || !geometry.coordinates || !duration) {
-      return c.json({ error: "geometry and duration are required" }, 400);
+    if (!geometry || !geometry.coordinates || typeof duration !== "number") {
+      return sendError(c, "VALIDATION_ERROR", "Valid geometry and duration are required");
     }
     const coords = geometry.coordinates;
+    if (!Array.isArray(coords) || coords.length === 0) {
+      return sendError(c, "VALIDATION_ERROR", "Invalid coordinates array");
+    }
     const routeLine = lineString(coords);
     let cumulativeDistances = [0];
     for (let i = 1; i < coords.length; i++) {
@@ -2600,17 +2644,14 @@ app.post("/api/weather/route", async (c) => {
       const pt = index_default2(routeLine, dist, { units: "miles" });
       const timeMins = Math.round(i / (numSegments - 1) * totalTimeMins);
       let locName = `Checkpoint ${i}`;
-      if (i === 0 && originName)
-        locName = originName;
-      if (i === numSegments - 1 && destName)
-        locName = destName;
+      if (i === 0 && originName) locName = originName;
+      if (i === numSegments - 1 && destName) locName = destName;
       checkpoints.push({
         id: `seg_${i}`,
         distanceFromStartMi: dist,
         timeFromStartMins: timeMins,
         locationName: locName,
         coordinates: pt.geometry.coordinates
-        // [lng, lat]
       });
     }
     const lats = checkpoints.map((c2) => c2.coordinates[1]).join(",");
@@ -2625,13 +2666,12 @@ app.post("/api/weather/route", async (c) => {
     if (cachedResponse) {
       meteoData = await cachedResponse.json();
     } else {
-      const meteoRes = await fetch(meteoUrl);
-      if (!meteoRes.ok)
-        throw new Error(`Open-Meteo failed: ${meteoRes.status}`);
+      const meteoRes = await fetchWithTimeout(meteoUrl, {}, 8e3);
+      if (meteoRes.status === 429) throw new Error("RATE_LIMIT_EXCEEDED");
+      if (!meteoRes.ok) throw new Error("UPSTREAM_SERVICE_FAILED");
       meteoData = await meteoRes.json();
       c.executionCtx.waitUntil(cache.put(cacheKey, new Response(JSON.stringify(meteoData), {
         headers: { "Cache-Control": "public, max-age=900" }
-        // 15 mins
       })));
     }
     const now = /* @__PURE__ */ new Date();
@@ -2722,7 +2762,6 @@ app.post("/api/weather/route", async (c) => {
           temperatureF: Math.round(hourly.temperature_2m[hourIndex]),
           severity,
           icon,
-          // String name of the icon
           rainProbability: hourly.precipitation_probability[hourIndex],
           feelsLikeF: Math.round(hourly.apparent_temperature[hourIndex]),
           humidity: hourly.relative_humidity_2m[hourIndex],
@@ -2740,7 +2779,286 @@ app.post("/api/weather/route", async (c) => {
     });
     return c.json({ success: true, data: results });
   } catch (err) {
-    return c.json({ error: err.message }, 500);
+    if (err.name === "AbortError") return sendError(c, "UPSTREAM_TIMEOUT", "Request to weather service timed out", 504);
+    if (err.message === "RATE_LIMIT_EXCEEDED") return sendError(c, "RATE_LIMIT_EXCEEDED", "Weather service rate limit exceeded", 429);
+    return sendError(c, "INTERNAL_ERROR", "An unexpected error occurred while processing weather", 500);
+  }
+});
+app.post("/api/route-weather", async (c) => {
+  try {
+    let body;
+    try {
+      body = await c.req.json();
+    } catch {
+      return sendError(c, "INVALID_JSON", "Malformed JSON payload");
+    }
+    const { origin, destination: destination2, departureTime } = body;
+    if (!origin || typeof origin !== "string" || origin.trim().length === 0) {
+      return sendError(c, "VALIDATION_ERROR", "Origin must be a non-empty string");
+    }
+    if (!destination2 || typeof destination2 !== "string" || destination2.trim().length === 0) {
+      return sendError(c, "VALIDATION_ERROR", "Destination must be a non-empty string");
+    }
+    if (origin.length > 150 || destination2.length > 150) {
+      return sendError(c, "VALIDATION_ERROR", "Origin and destination must be under 150 characters");
+    }
+    const normOrigin = origin.trim().toLowerCase();
+    const normDest = destination2.trim().toLowerCase();
+    let timeKey = "now";
+    const startTime = departureTime ? new Date(departureTime) : /* @__PURE__ */ new Date();
+    if (departureTime) {
+      if (isNaN(startTime.getTime())) {
+        return sendError(c, "VALIDATION_ERROR", "Invalid departure time format");
+      }
+      const nearestHour = new Date(startTime);
+      nearestHour.setMinutes(0, 0, 0);
+      timeKey = nearestHour.toISOString();
+    }
+    const cache = caches.default;
+    const reqUrl = new URL(c.req.url);
+    const globalCacheKey = new Request(`${reqUrl.origin}/api/route-weather?o=${encodeURIComponent(normOrigin)}&d=${encodeURIComponent(normDest)}&t=${encodeURIComponent(timeKey)}`);
+    const cachedResponse = await cache.match(globalCacheKey);
+    if (cachedResponse) {
+      const res = new Response(cachedResponse.body, cachedResponse);
+      res.headers.set("X-Cache", "HIT");
+      return res;
+    }
+    const geocode = /* @__PURE__ */ __name(async (query) => {
+      const normQ = query.trim().toLowerCase();
+      const geoCacheKey = new Request(`${reqUrl.origin}/api/geocode/internal?q=${encodeURIComponent(normQ)}`);
+      const cachedGeo = await cache.match(geoCacheKey);
+      if (cachedGeo) {
+        return cachedGeo.json();
+      }
+      const nominatimUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`;
+      const res = await fetchWithTimeout(nominatimUrl, {
+        headers: {
+          "User-Agent": "RouteWeatherApp/1.0 (support@routeweather.com)",
+          "Referer": "https://routeweather.com"
+        }
+      }, 8e3);
+      if (res.status === 429) throw new Error("RATE_LIMIT_EXCEEDED");
+      if (!res.ok) throw new Error("UPSTREAM_SERVICE_FAILED");
+      const data = await res.json();
+      if (!data || data.length === 0) throw new Error(`LOCATION_NOT_FOUND: ${query}`);
+      const result = {
+        lat: parseFloat(data[0].lat),
+        lng: parseFloat(data[0].lon),
+        name: data[0].display_name
+      };
+      c.executionCtx.waitUntil(cache.put(geoCacheKey, new Response(JSON.stringify(result), {
+        headers: { "Cache-Control": "public, max-age=86400" }
+        // 24 hours
+      })));
+      return result;
+    }, "geocode");
+    const originData = await geocode(origin);
+    const destData = await geocode(destination2);
+    const routeCacheKey = new Request(`${reqUrl.origin}/api/route/internal?from=${originData.lng},${originData.lat}&to=${destData.lng},${destData.lat}`);
+    let routeResult;
+    const cachedRoute = await cache.match(routeCacheKey);
+    if (cachedRoute) {
+      routeResult = await cachedRoute.json();
+    } else {
+      const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${originData.lng},${originData.lat};${destData.lng},${destData.lat}?overview=full&geometries=geojson`;
+      const osrmRes = await fetchWithTimeout(osrmUrl, {
+        headers: {
+          "User-Agent": "RouteWeatherApp/1.0 (support@routeweather.com)",
+          "Referer": "https://routeweather.com"
+        }
+      }, 1e4);
+      if (osrmRes.status === 429) throw new Error("RATE_LIMIT_EXCEEDED");
+      if (!osrmRes.ok) throw new Error("UPSTREAM_SERVICE_FAILED");
+      const osrmData = await osrmRes.json();
+      if (osrmData.code !== "Ok" || !osrmData.routes.length) {
+        throw new Error("ROUTE_NOT_FOUND");
+      }
+      const route = osrmData.routes[0];
+      routeResult = {
+        geometry: route.geometry,
+        distanceMeters: route.distance,
+        durationSeconds: route.duration
+      };
+      c.executionCtx.waitUntil(cache.put(routeCacheKey, new Response(JSON.stringify(routeResult), {
+        headers: { "Cache-Control": "public, max-age=86400" }
+      })));
+    }
+    const { geometry, distanceMeters, durationSeconds } = routeResult;
+    const coords = geometry.coordinates;
+    const routeLine = lineString(coords);
+    let cumulativeDistances = [0];
+    for (let i = 1; i < coords.length; i++) {
+      cumulativeDistances.push(cumulativeDistances[i - 1] + index_default(point(coords[i - 1]), point(coords[i]), { units: "miles" }));
+    }
+    const totalDistanceMi = cumulativeDistances[cumulativeDistances.length - 1];
+    const totalTimeMins = Math.round(durationSeconds / 60);
+    let numSegments = Math.max(3, Math.min(10, Math.ceil(totalDistanceMi / 30)));
+    const checkpoints = [];
+    for (let i = 0; i < numSegments; i++) {
+      const dist = i / (numSegments - 1) * totalDistanceMi;
+      const pt = index_default2(routeLine, dist, { units: "miles" });
+      const timeMins = Math.round(i / (numSegments - 1) * totalTimeMins);
+      let locName = `Checkpoint ${i}`;
+      if (i === 0) locName = originData.name;
+      if (i === numSegments - 1) locName = destData.name;
+      checkpoints.push({
+        id: `seg_${i}`,
+        distanceFromStartMi: dist,
+        timeFromStartMins: timeMins,
+        locationName: locName,
+        coordinates: pt.geometry.coordinates
+      });
+    }
+    const lats = checkpoints.map((c2) => c2.coordinates[1]).join(",");
+    const lngs = checkpoints.map((c2) => c2.coordinates[0]).join(",");
+    const weatherCacheKeyStr = `${reqUrl.origin}/api/weather/internal?hash=${lats.substring(0, 20)}-${lngs.substring(0, 20)}`;
+    const weatherCacheKey = new Request(weatherCacheKeyStr);
+    let meteoData;
+    const cachedWeather = await cache.match(weatherCacheKey);
+    if (cachedWeather) {
+      meteoData = await cachedWeather.json();
+    } else {
+      const meteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lngs}&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,wind_speed_10m,wind_direction_10m,relative_humidity_2m,visibility,cloud_cover,weather_code,uv_index&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto`;
+      const meteoRes = await fetchWithTimeout(meteoUrl, {}, 8e3);
+      if (meteoRes.status === 429) throw new Error("RATE_LIMIT_EXCEEDED");
+      if (!meteoRes.ok) throw new Error("UPSTREAM_SERVICE_FAILED");
+      meteoData = await meteoRes.json();
+      c.executionCtx.waitUntil(cache.put(weatherCacheKey, new Response(JSON.stringify(meteoData), {
+        headers: { "Cache-Control": "public, max-age=900" }
+      })));
+    }
+    const results = checkpoints.map((cp, idx) => {
+      const locationData = Array.isArray(meteoData) ? meteoData[idx] : meteoData;
+      const arrivalTime = new Date(startTime.getTime() + cp.timeFromStartMins * 6e4);
+      const hourly = locationData.hourly;
+      let hourIndex = 0;
+      let minDiff = Infinity;
+      hourly.time.forEach((timeStr, i) => {
+        const time = new Date(timeStr);
+        const diff = Math.abs(time.getTime() - arrivalTime.getTime());
+        if (diff < minDiff) {
+          minDiff = diff;
+          hourIndex = i;
+        }
+      });
+      const wmoCode = hourly.weather_code[hourIndex];
+      let condition = "Clear";
+      let severity = "safe";
+      let icon = "Sun";
+      let alert = null;
+      let riskAssessment = "Optimal driving conditions.";
+      if (wmoCode === 0) {
+        condition = "Clear";
+        icon = "Sun";
+      } else if (wmoCode === 1 || wmoCode === 2) {
+        condition = "Partly Cloudy";
+        icon = "Cloud";
+      } else if (wmoCode === 3) {
+        condition = "Overcast";
+        icon = "Cloud";
+      } else if (wmoCode >= 45 && wmoCode <= 48) {
+        condition = "Fog";
+        icon = "Cloud";
+        severity = "warning";
+        riskAssessment = "Reduced visibility. Drive with caution.";
+      } else if (wmoCode >= 51 && wmoCode <= 57) {
+        condition = "Drizzle";
+        icon = "CloudRain";
+      } else if (wmoCode >= 61 && wmoCode <= 65) {
+        condition = "Rain";
+        icon = "CloudRain";
+        severity = "warning";
+        riskAssessment = "Reduced traction. Increase following distance.";
+        if (wmoCode === 65) {
+          condition = "Heavy Rain";
+          icon = "CloudLightning";
+          alert = "Heavy Downpour";
+          riskAssessment = "High risk of hydroplaning.";
+        }
+      } else if (wmoCode >= 71 && wmoCode <= 77) {
+        condition = "Snow";
+        icon = "Snowflake";
+        severity = "critical";
+        riskAssessment = "Severe winter conditions.";
+        alert = "Snow/Ice on roads";
+      } else if (wmoCode >= 80 && wmoCode <= 82) {
+        condition = "Rain Showers";
+        icon = "CloudRain";
+        severity = "warning";
+      } else if (wmoCode >= 85 && wmoCode <= 86) {
+        condition = "Snow Showers";
+        icon = "CloudSnow";
+        severity = "critical";
+        alert = "Snow Showers";
+      } else if (wmoCode >= 95) {
+        condition = "Thunderstorm";
+        icon = "CloudLightning";
+        severity = "critical";
+        alert = "Thunderstorm Warning";
+        riskAssessment = "Dangerous driving conditions.";
+      }
+      const windSpeed = hourly.wind_speed_10m[hourIndex];
+      if (windSpeed > 30) {
+        severity = "critical";
+        alert = "High Wind Warning";
+        riskAssessment = "Dangerous crosswinds for high-profile vehicles.";
+      }
+      const degreesToDirection = /* @__PURE__ */ __name((deg) => {
+        const dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+        return dirs[Math.round(deg / 45) % 8];
+      }, "degreesToDirection");
+      return {
+        ...cp,
+        weather: {
+          condition,
+          temperatureF: Math.round(hourly.temperature_2m[hourIndex]),
+          severity,
+          icon,
+          rainProbability: hourly.precipitation_probability[hourIndex],
+          feelsLikeF: Math.round(hourly.apparent_temperature[hourIndex]),
+          humidity: hourly.relative_humidity_2m[hourIndex],
+          windSpeedMph: Math.round(windSpeed),
+          windDirection: degreesToDirection(hourly.wind_direction_10m[hourIndex]),
+          visibilityMi: Math.round(hourly.visibility[hourIndex] / 1609.34 * 10) / 10,
+          precipitationIn: hourly.precipitation[hourIndex],
+          cloudCover: hourly.cloud_cover[hourIndex],
+          uvIndex: hourly.uv_index ? hourly.uv_index[hourIndex] : 0,
+          forecastText: `${condition} expected at arrival time.`,
+          riskAssessment
+        },
+        alert,
+        eta: arrivalTime.toISOString()
+      };
+    });
+    const finalResult = {
+      success: true,
+      data: {
+        origin: originData,
+        destination: destData,
+        geometry,
+        distanceMeters,
+        durationSeconds,
+        checkpoints: results
+      }
+    };
+    const finalResponse = new Response(JSON.stringify(finalResult), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "public, max-age=900",
+        // 15 mins
+        "Access-Control-Allow-Origin": "http://localhost:5173"
+      }
+    });
+    c.executionCtx.waitUntil(cache.put(globalCacheKey, finalResponse.clone()));
+    return finalResponse;
+  } catch (err) {
+    if (err.name === "AbortError") return sendError(c, "UPSTREAM_TIMEOUT", "Request to an upstream service timed out", 504);
+    if (err.message === "RATE_LIMIT_EXCEEDED") return sendError(c, "RATE_LIMIT_EXCEEDED", "An upstream service rate limit was exceeded", 429);
+    if (err.message.startsWith("LOCATION_NOT_FOUND")) return sendError(c, "LOCATION_NOT_FOUND", err.message.replace("LOCATION_NOT_FOUND: ", "Could not find location: "), 404);
+    if (err.message === "ROUTE_NOT_FOUND") return sendError(c, "ROUTE_NOT_FOUND", "Could not find a valid driving route", 404);
+    console.error("Backend Error:", err);
+    return sendError(c, "INTERNAL_ERROR", "An unexpected internal error occurred", 500);
   }
 });
 var src_default = app;
@@ -2778,15 +3096,21 @@ var jsonError = /* @__PURE__ */ __name(async (request, env, _ctx, middlewareCtx)
     return await middlewareCtx.next(request, env);
   } catch (e) {
     const error = reduceError(e);
-    return Response.json(error, {
-      status: 500,
-      headers: { "MF-Experimental-Error-Stack": "true" }
-    });
+    const body = JSON.stringify(error);
+    const headers = {
+      "Content-Type": "application/json",
+      "MF-Experimental-Error-Stack": "true"
+    };
+    const encoded = encodeURIComponent(body);
+    if (encoded.length <= 8192) {
+      headers["MF-Experimental-Error-Stack-Payload"] = encoded;
+    }
+    return new Response(body, { status: 500, headers });
   }
 }, "jsonError");
 var middleware_miniflare3_json_error_default = jsonError;
 
-// .wrangler/tmp/bundle-vmZpaS/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-Bp7PlW/middleware-insertion-facade.js
 var __INTERNAL_WRANGLER_MIDDLEWARE__ = [
   middleware_ensure_req_body_drained_default,
   middleware_miniflare3_json_error_default
@@ -2818,22 +3142,26 @@ function __facade_invoke__(request, env, ctx, dispatch, finalMiddleware) {
 }
 __name(__facade_invoke__, "__facade_invoke__");
 
-// .wrangler/tmp/bundle-vmZpaS/middleware-loader.entry.ts
-var __Facade_ScheduledController__ = class {
+// .wrangler/tmp/bundle-Bp7PlW/middleware-loader.entry.ts
+var __Facade_ScheduledController__ = class ___Facade_ScheduledController__ {
   constructor(scheduledTime, cron, noRetry) {
     this.scheduledTime = scheduledTime;
     this.cron = cron;
     this.#noRetry = noRetry;
   }
+  scheduledTime;
+  cron;
+  static {
+    __name(this, "__Facade_ScheduledController__");
+  }
   #noRetry;
   noRetry() {
-    if (!(this instanceof __Facade_ScheduledController__)) {
+    if (!(this instanceof ___Facade_ScheduledController__)) {
       throw new TypeError("Illegal invocation");
     }
     this.#noRetry();
   }
 };
-__name(__Facade_ScheduledController__, "__Facade_ScheduledController__");
 function wrapExportedHandler(worker) {
   if (__INTERNAL_WRANGLER_MIDDLEWARE__ === void 0 || __INTERNAL_WRANGLER_MIDDLEWARE__.length === 0) {
     return worker;
@@ -2874,15 +3202,15 @@ function wrapWorkerEntrypoint(klass) {
     __facade_register__(middleware);
   }
   return class extends klass {
-    #fetchDispatcher = (request, env, ctx) => {
+    #fetchDispatcher = /* @__PURE__ */ __name((request, env, ctx) => {
       this.env = env;
       this.ctx = ctx;
       if (super.fetch === void 0) {
         throw new Error("Entrypoint class does not define a fetch() function.");
       }
       return super.fetch(request);
-    };
-    #dispatcher = (type, init) => {
+    }, "#fetchDispatcher");
+    #dispatcher = /* @__PURE__ */ __name((type, init) => {
       if (type === "scheduled" && super.scheduled !== void 0) {
         const controller = new __Facade_ScheduledController__(
           Date.now(),
@@ -2892,7 +3220,7 @@ function wrapWorkerEntrypoint(klass) {
         );
         return super.scheduled(controller);
       }
-    };
+    }, "#dispatcher");
     fetch(request) {
       return __facade_invoke__(
         request,

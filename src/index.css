@@ -4,7 +4,25 @@
   --font-sans: "Geist", "Inter", sans-serif;
   --font-mono: "Geist Mono", monospace;
 
-  /* Theme variables */
+  /* ----- DASHBOARD DESIGN TOKENS ----- */
+  
+  /* Dashboard Colors (Mapped from :root) */
+  --color-dash-bg: var(--dash-bg);
+  --color-dash-surface: var(--dash-surface);
+  --color-dash-border: var(--dash-border);
+  --color-dash-text: var(--dash-text);
+  --color-dash-text-muted: var(--dash-text-muted);
+  
+  --color-dash-status-online: #10b981; /* green used only for status */
+  --color-dash-status-offline: #ef4444; /* red used only for status */
+
+  /* Spacing Scale override for strict discipline (4/8/16/24px) */
+  --spacing-1: 0.25rem;  /* 4px */
+  --spacing-2: 0.5rem;   /* 8px */
+  --spacing-4: 1rem;     /* 16px */
+  --spacing-6: 1.5rem;   /* 24px */
+
+  /* Legacy Theme variables */
   --color-bg-base: var(--bg-base);
   --color-bg-surface: var(--bg-surface);
   --color-bg-elevated: var(--bg-elevated);
@@ -21,7 +39,7 @@
   --color-accent-bg: var(--accent-bg);
   --color-accent-text: var(--accent-text);
 
-  /* Weather Colors */
+  /* Legacy Weather Colors */
   --color-weather-safe: var(--weather-safe);
   --color-weather-safe-bg: var(--weather-safe-bg);
   --color-weather-warning: var(--weather-warning);
@@ -32,7 +50,47 @@
   --color-weather-extreme-bg: var(--weather-extreme-bg);
 }
 
+/* ----- DASHBOARD UTILITY CLASSES ----- */
+
+@utility dash-glass {
+  background-color: var(--color-dash-surface);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--color-dash-border);
+  border-radius: 1rem; /* rounded-2xl = 16px */
+  /* Note: padding (e.g. p-4 or p-6) should be applied on the element itself */
+}
+
+@utility text-dash-hero {
+  font-size: 2.25rem; /* 36px */
+  line-height: 2.5rem;
+  font-weight: 300; /* font-light */
+  color: var(--color-dash-text);
+}
+
+@utility text-dash-label {
+  font-size: 0.6875rem; /* 11px */
+  line-height: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em; /* tracking-wide */
+  color: var(--color-dash-text-muted);
+}
+
+@utility text-dash-body {
+  font-size: 0.8125rem; /* 13px */
+  line-height: 1.25rem;
+  font-weight: 400; /* regular */
+  color: var(--color-dash-text);
+}
+
 :root {
+  /* Dashboard Tokens (Dark default) */
+  --dash-bg: #0a0a0b;
+  --dash-surface: rgba(255, 255, 255, 0.05);
+  --dash-border: rgba(255, 255, 255, 0.05); /* Thinned border */
+  --dash-text: rgba(255, 255, 255, 0.9);
+  --dash-text-muted: rgba(255, 255, 255, 0.5);
+
   /* Dark Mode (Zinc tones) */
   --bg-base: #09090b; /* zinc-950 */
   --bg-surface: rgba(24, 24, 27, 0.8); /* zinc-900/80 */
@@ -87,7 +145,31 @@
   --weather-critical: #c026d3; /* fuchsia-600 */
   --weather-critical-bg: rgba(192, 38, 211, 0.1);
   --weather-extreme: #9333ea; /* purple-600 */
-  --weather-extreme-bg: rgba(147, 51, 234, 0.1);
+  --weather-extreme-bg: rgba(225, 29, 72, 0.1);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    /* Dashboard Tokens (Light mode) */
+    --dash-bg: #f4f4f5;
+    --dash-surface: rgba(0, 0, 0, 0.03);
+    --dash-border: rgba(0, 0, 0, 0.05);
+    --dash-text: rgba(0, 0, 0, 0.9);
+    --dash-text-muted: rgba(0, 0, 0, 0.5);
+
+    /* Light Mode (Zinc tones) */
+    --bg-base: #fafafa;
+    --bg-surface: rgba(255, 255, 255, 0.9);
+    --bg-elevated: rgba(244, 244, 245, 0.9);
+    --bg-overlay: rgba(255, 255, 255, 0.5);
+
+    --text-primary: #09090b;
+    --text-secondary: #3f3f46;
+    --text-muted: #71717a;
+
+    --border-subtle: rgba(228, 228, 231, 0.5);
+    --border-strong: rgba(212, 212, 216, 1);
+  }
 }
 
 body {
@@ -117,4 +199,30 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--border-strong);
+}
+
+/* Subtle Animations */
+@keyframes draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.animate-draw {
+  stroke-dasharray: 200;
+  stroke-dashoffset: 200;
+  animation: draw 300ms ease-out forwards;
+}
+
+@keyframes gentle-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.1);
+  }
+}
+.animate-gentle-pulse {
+  animation: gentle-pulse 2s ease-in-out infinite;
 }

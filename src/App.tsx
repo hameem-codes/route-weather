@@ -10,19 +10,10 @@ import {
   CloudSnow,
   NavigationArrow,
   SpinnerGap,
-  X,
-  Wind,
-  Drop,
-  Eye,
-  CloudCheck,
-  Warning,
   ShareNetwork,
   Image as ImageIcon,
   Link,
-  Export,
-  CaretUp,
-  CaretDown,
-  Moon
+  Export
 } from '@phosphor-icons/react'
 import * as maplibregl from 'maplibre-gl';
 import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
@@ -48,26 +39,16 @@ const IconMap: Record<string, any> = {
   "CloudSnow": CloudSnow
 };
 
-const getRasterMapStyle = (theme: 'dark' | 'light') => ({
+const getRasterMapStyle = () => ({
   version: 8,
   sources: {
     'carto-basemap': {
       type: 'raster',
-      tiles: theme === 'dark' 
-        ? [
-            'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-            'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-            'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-            'https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
-          ]
-        : [
-            'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
-            'https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
-            'https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
-            'https://d.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'
-          ],
+      tiles: [
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+      ],
       tileSize: 256,
-      attribution: '&copy; <a href="https://carto.com/">CARTO</a>'
+      attribution: '&copy; Esri'
     }
   },
   layers: [
@@ -142,8 +123,6 @@ function App() {
   // Animation State
   const [routeState, setRouteState] = useState<'hidden' | 'animating' | 'visible'>('hidden');
   const [progress, setProgress] = useState(0); // 0 to 1
-  const [isTimelineExpanded, setIsTimelineExpanded] = useState(true);
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
 
   // Marker & Share Interaction State
   const [hoveredMarkerId, setHoveredMarkerId] = useState<string | null>(null);
@@ -151,114 +130,103 @@ function App() {
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [isSnapshotMode, setIsSnapshotMode] = useState(false);
 
+  const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const calculateRoute = async (overrideOrigin?: string, overrideDest?: string) => {
-    setIsLoading(true);
-    setRouteState('hidden');
-    setSelectedMarker(null);
-    setHoveredMarkerId(null);
-    setShowShareMenu(false);
-    
-    const oInput = overrideOrigin || originInput;
-    const dInput = overrideDest || destInput;
-    
-    try {
-      // 1. Geocode Origin
-      const originRes = await fetch(`http://localhost:8787/api/geocode?q=${encodeURIComponent(oInput)}`);
-      if (!originRes.ok) {
-        const err = await originRes.json();
-        throw new Error(err.error || "Failed to geocode origin");
-      }
-      const originData = await originRes.json();
-
-      // 2. Geocode Destination
-      const destRes = await fetch(`http://localhost:8787/api/geocode?q=${encodeURIComponent(dInput)}`);
-      if (!destRes.ok) {
-        const err = await destRes.json();
-        throw new Error(err.error || "Failed to geocode destination");
-      }
-      const destData = await destRes.json();
-
-      // 3. Fetch Route
-      const routeUrl = `http://localhost:8787/api/route?originLat=${originData.latitude}&originLng=${originData.longitude}&destLat=${destData.latitude}&destLng=${destData.longitude}`;
-      const routeRes = await fetch(routeUrl);
-      
-      if (!routeRes.ok) {
-        const errorData = await routeRes.json();
-        throw new Error(errorData.error || "Failed to fetch route");
-      }
-      
-      const routeResponse = await routeRes.json();
-      const routeResult = routeResponse.data;
-
-      const routeGeometry = routeResult.geometry; // GeoJSON LineString
-      
-      let cumulativeDistances = [0];
-      for (let i = 1; i < routeGeometry.coordinates.length; i++) {
-        const p1 = point(routeGeometry.coordinates[i-1]);
-        const p2 = point(routeGeometry.coordinates[i]);
-        cumulativeDistances.push(cumulativeDistances[i-1] + distance(p1, p2, { units: 'miles' }));
-      }
-      const totalDistanceMi = cumulativeDistances[cumulativeDistances.length - 1];
-      
-      const routeFeature = { type: 'Feature', geometry: routeGeometry, properties: {} } as any;
-      const totalTimeMins = Math.round(routeResult.duration / 60);
-
-      // 4. Fetch Weather Checkpoints
-      const weatherRes = await fetch('http://localhost:8787/api/weather/route', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-           geometry: routeGeometry,
-           duration: routeResult.duration,
-           originName: oInput.split(',')[0],
-           destName: dInput.split(',')[0]
-        })
-      });
-      
-      if (!weatherRes.ok) {
-        throw new Error("Failed to fetch weather data");
-      }
-      
-      const weatherData = await weatherRes.json();
-      const segments = weatherData.data;
-
-      setRouteData({
-        totalDistanceMi,
-        totalTimeMins,
-        routeLine: routeFeature,
-        cumulativeDistances,
-        segments
-      });
-
-      // Frame route
-      if (mapRef.current) {
-         const lons = routeGeometry.coordinates.map((c: any) => c[0]);
-         const lats = routeGeometry.coordinates.map((c: any) => c[1]);
-         mapRef.current.fitBounds(
-           [
-             [Math.min(...lons), Math.min(...lats)],
-             [Math.max(...lons), Math.max(...lats)]
-           ],
-           { padding: 100, duration: 1500 }
-         );
-      }
-      
-      // Auto start animation
-      setRouteState('animating');
-      setProgress(0);
-
-      // Update URL with search params for sharing
-      const url = new URL(window.location.href);
-      url.searchParams.set('origin', oInput);
-      url.searchParams.set('dest', dInput);
-      window.history.replaceState({}, '', url.toString());
-
-    } catch (e: any) {
-      console.error(e);
-      alert(e.message || "Error calculating route. Please check the cities.");
-    } finally {
-      setIsLoading(false);
+    // Debounce to prevent rapid repeated calls
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
     }
+
+    return new Promise<void>((resolve) => {
+      debounceTimeoutRef.current = setTimeout(async () => {
+        setIsLoading(true);
+        setRouteState('hidden');
+        setSelectedMarker(null);
+        setHoveredMarkerId(null);
+        setShowShareMenu(false);
+        
+        const oInput = overrideOrigin || originInput;
+        const dInput = overrideDest || destInput;
+        
+        if (!oInput || !dInput) {
+          setIsLoading(false);
+          resolve();
+          return;
+        }
+
+        try {
+          const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8787';
+          // Unified backend workflow call
+          const response = await fetch(`${API_BASE}/api/route-weather`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              origin: oInput,
+              destination: dInput
+            })
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || "Failed to fetch route and weather");
+          }
+
+          const resData = await response.json();
+          const { geometry, durationSeconds, checkpoints } = resData.data;
+
+          // Recreate cumulative distances on frontend for animation purposes
+          let cumulativeDistances = [0];
+          for (let i = 1; i < geometry.coordinates.length; i++) {
+            const p1 = point(geometry.coordinates[i-1]);
+            const p2 = point(geometry.coordinates[i]);
+            cumulativeDistances.push(cumulativeDistances[i-1] + distance(p1, p2, { units: 'miles' }));
+          }
+          const totalDistanceMi = cumulativeDistances[cumulativeDistances.length - 1];
+          const totalTimeMins = Math.round(durationSeconds / 60);
+          
+          const routeFeature = { type: 'Feature', geometry, properties: {} } as any;
+
+          setRouteData({
+            totalDistanceMi,
+            totalTimeMins,
+            routeLine: routeFeature,
+            cumulativeDistances,
+            segments: checkpoints
+          });
+
+          // Frame route
+          if (mapRef.current) {
+             const lons = geometry.coordinates.map((c: any) => c[0]);
+             const lats = geometry.coordinates.map((c: any) => c[1]);
+             mapRef.current.fitBounds(
+               [
+                 [Math.min(...lons), Math.min(...lats)],
+                 [Math.max(...lons), Math.max(...lats)]
+               ],
+               { padding: 100, duration: 1500 }
+             );
+          }
+          
+          // Auto start animation
+          setRouteState('animating');
+          setProgress(0);
+
+          // Update URL with search params for sharing
+          const url = new URL(window.location.href);
+          url.searchParams.set('origin', oInput);
+          url.searchParams.set('dest', dInput);
+          window.history.replaceState({}, '', url.toString());
+
+        } catch (e: any) {
+          console.error(e);
+          alert(e.message || "Error calculating route. Please check the cities.");
+        } finally {
+          setIsLoading(false);
+          resolve();
+        }
+      }, 300); // 300ms debounce
+    });
   };
 
   useEffect(() => {
@@ -267,20 +235,19 @@ function App() {
     let animationFrame: number;
     let startTime: number | null = null;
     
-    // Dynamic duration based on route length: roughly 30ms per mile, bounded between 4s and 15s
-    const ANIMATION_DURATION_MS = Math.max(4000, Math.min(15000, routeData.totalDistanceMi * 30));
+    const ANIMATION_DURATION_MS = 300; // subtle, quick transition
 
     const animate = (timestamp: number) => {
       if (!startTime) startTime = timestamp;
       const elapsed = timestamp - startTime;
       
-      // Easing function for smooth acceleration/deceleration
+      // ease-out cubic for a fast but smooth deceleration
       const t = Math.min(elapsed / ANIMATION_DURATION_MS, 1);
-      const easeInOut = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+      const easeOut = 1 - Math.pow(1 - t, 3);
 
-      setProgress(easeInOut);
+      setProgress(easeOut);
       
-      if (easeInOut >= 1) {
+      if (easeOut >= 1) {
         setRouteState('visible');
         return;
       }
@@ -449,10 +416,10 @@ function App() {
     }
   };
 
-  const currentMapStyle = useMemo(() => getRasterMapStyle(theme), [theme]);
+  const currentMapStyle = useMemo(() => getRasterMapStyle(), []);
 
   return (
-    <div ref={containerRef} className={`relative w-full h-screen overflow-hidden text-text-primary font-sans flex ${theme === 'light' ? 'theme-light' : ''} ${isSnapshotMode ? 'bg-transparent pointer-events-none snapshot-mode' : 'bg-bg-base'}`}>
+    <div ref={containerRef} className={`relative w-full h-screen overflow-hidden text-text-primary font-sans flex ${isSnapshotMode ? 'bg-transparent pointer-events-none snapshot-mode' : 'bg-bg-base'}`}>
       <style>
         {isSnapshotMode && `
           .maplibregl-ctrl-bottom-left, .maplibregl-ctrl-bottom-right, .maplibregl-ctrl-top-left, .maplibregl-ctrl-top-right {
@@ -460,6 +427,16 @@ function App() {
           }
         `}
       </style>
+
+      {/* Floating Map Title */}
+      {!isSnapshotMode && routeData && (
+        <div className="absolute top-8 left-1/2 -translate-x-1/2 md:left-[calc(50%+200px)] pointer-events-none z-20 animate-in fade-in slide-in-from-top-4">
+          <div className="dash-glass px-6 py-2.5 rounded-full shadow-2xl flex items-center gap-2">
+            <h1 className="text-dash-label !text-xs !tracking-widest !m-0">Weather Along Route</h1>
+          </div>
+        </div>
+      )}
+
       {/* Interactive Map */}
       <div className={`absolute inset-0 z-0 ${isSnapshotMode ? 'pointer-events-none' : ''}`}>
         <Map
@@ -478,7 +455,6 @@ function App() {
           {/* Glowing Route Line Segments sliced along REAL road geometry */}
           {(routeState === 'animating' || routeState === 'visible') && routeData && routeData.segments.slice(0, -1).map((seg, i) => {
             const nextSeg = routeData.segments[i + 1];
-            const severity = nextSeg.weather.severity;
             
             const distToStart = seg.distanceFromStartMi;
             const distToEnd = nextSeg.distanceFromStartMi;
@@ -497,13 +473,8 @@ function App() {
               return null;
             }
 
-            const glowColor = theme === 'light' 
-              ? (severity === 'safe' ? '#0ea5e9' : severity === 'warning' ? '#fbbf24' : severity === 'critical' ? '#ec4899' : '#c084fc')
-              : (severity === 'safe' ? '#3b82f6' : severity === 'warning' ? '#f59e0b' : severity === 'critical' ? '#d946ef' : '#a855f7');
-              
-            const coreColor = theme === 'light'
-              ? (severity === 'safe' ? '#7dd3fc' : severity === 'warning' ? '#fde047' : severity === 'critical' ? '#f472b6' : '#d8b4fe')
-              : (severity === 'safe' ? '#93c5fd' : severity === 'warning' ? '#fcd34d' : severity === 'critical' ? '#f0abfc' : '#d8b4fe');
+            const glowColor = 'rgba(0, 0, 0, 0.4)'; // Subtle shadow/glow for contrast against satellite
+            const coreColor = '#ffffff';
 
             const segmentGeoJson = {
               type: 'FeatureCollection',
@@ -526,8 +497,8 @@ function App() {
                   paint={{
                     'line-color': glowColor,
                     'line-width': 6,
-                    'line-opacity': 0.8,
-                    'line-blur': 2
+                    'line-opacity': 0.6,
+                    'line-blur': 3
                   }}
                 />
                 <Layer
@@ -536,6 +507,7 @@ function App() {
                   paint={{
                     'line-color': coreColor,
                     'line-width': 2,
+                    'line-dasharray': [1, 2]
                   }}
                 />
               </Source>
@@ -594,7 +566,7 @@ function App() {
               <div className="relative flex items-center justify-center pointer-events-none">
                 <div className="absolute w-8 h-8 bg-white border border-white rounded-full opacity-30 animate-ping"></div>
                 <div 
-                  className="w-5 h-5 bg-white border-2 border-zinc-200 rounded-full flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.8)] transition-transform duration-100 ease-linear"
+                  className="w-5 h-5 bg-white border-2 border-zinc-900 rounded-full flex items-center justify-center shadow-[0_0_8px_rgba(0,0,0,0.6)] transition-transform duration-100 ease-linear"
                   style={{ transform: `rotate(${accumulatedBearingRef.current}deg)` }}
                 >
                    <NavigationArrow size={12} weight="fill" className="text-zinc-900 -rotate-45" />
@@ -606,8 +578,6 @@ function App() {
 
           {/* Markers for Weather Points */}
           {routeData && routeData.segments.map((seg) => {
-            const isSafe = seg.weather.severity === 'safe';
-            const isWarning = seg.weather.severity === 'warning';
             
             // Determine if marker should be visible
             let isVisible = false;
@@ -633,18 +603,13 @@ function App() {
                 style={{ zIndex: (isHovered || isSelected) && !isSnapshotMode ? 50 : 30 }}
               >
                 <div className="relative">
-                  {/* Tooltip (Hover State) - Hidden in Snapshot Mode */}
-                  {!isSnapshotMode && isHovered && !isSelected && (
-                    <div className="absolute bottom-full mb-2 -translate-x-1/2 left-1/2 flex flex-col items-center animate-in fade-in zoom-in-95 duration-150 pointer-events-none z-50">
-                      <div className="bg-bg-surface backdrop-blur-xl border border-border-subtle rounded-xl p-3 shadow-2xl min-w-[140px] text-center">
-                        <div className="font-semibold text-sm mb-1 truncate max-w-[120px]">{seg.locationName}</div>
-                        <div className="text-2xl font-bold font-mono">{seg.weather.temperatureF}°</div>
-                        <div className="text-xs text-text-muted mt-1">{seg.weather.condition}</div>
-                        {seg.weather.rainProbability > 0 && (
-                          <div className="text-xs text-weather-safe mt-1 font-medium">{seg.weather.rainProbability}% Rain</div>
-                        )}
+                  {/* Contextual Tooltip */}
+                  {!isSnapshotMode && (isHovered || isSelected) && (
+                    <div className="absolute bottom-full mb-3 -translate-x-1/2 left-1/2 flex flex-col items-center animate-in fade-in zoom-in-95 duration-150 pointer-events-none z-50">
+                      <div className="dash-glass px-4 py-2 shadow-2xl text-center rounded-xl whitespace-nowrap">
+                        <div className="text-[10px] uppercase tracking-widest font-semibold mb-0.5 text-[var(--color-dash-text-muted)] truncate max-w-[150px]">{seg.locationName}</div>
+                        <div className="text-2xl font-light font-mono text-[var(--color-dash-text)]">{seg.weather.temperatureF}°</div>
                       </div>
-                      <div className="w-0 h-0 border-l-[6px] border-r-[6px] border-t-[6px] border-transparent border-t-zinc-700/50 -mt-[1px]"></div>
                     </div>
                   )}
 
@@ -657,19 +622,13 @@ function App() {
                       e.stopPropagation();
                       setSelectedMarker(seg);
                     }}
-                    className={`flex flex-col items-center justify-center -translate-y-2 transition-transform duration-300
-                      ${isSafe ? 'text-weather-safe' : isWarning ? 'text-weather-warning' : 'text-weather-critical'}
+                    className={`flex items-center justify-center transition-transform duration-300
                       ${(isHovered || isSelected) && !isSnapshotMode ? 'scale-125' : (!isSnapshotMode ? 'hover:scale-110 cursor-pointer' : '')}
                       animate-in fade-in zoom-in`}
                   >
-                    <div className={`bg-bg-surface backdrop-blur-md border rounded-lg p-1.5 shadow-lg flex items-center justify-center mb-1 transition-colors
-                      ${isSelected && !isSnapshotMode ? 'border-current' : 'border-border-subtle'}`}>
-                       {(() => {
-                         const WeatherIcon = IconMap[seg.weather.icon] || Sun;
-                         return <WeatherIcon size={22} weight={isSelected && !isSnapshotMode ? "fill" : "duotone"} />;
-                       })()}
+                    <div className={`w-3.5 h-3.5 rounded-full bg-white border-2 border-[var(--color-dash-bg)] shadow-[0_0_8px_rgba(0,0,0,0.6)] flex items-center justify-center transition-colors animate-gentle-pulse
+                      ${isSelected && !isSnapshotMode ? 'bg-zinc-200' : ''}`}>
                     </div>
-                    <div className="w-1.5 h-1.5 rounded-full bg-current shadow-[0_0_10px_currentColor]"></div>
                   </div>
                 </div>
               </Marker>
@@ -678,6 +637,75 @@ function App() {
         </Map>
       </div>
 
+      {/* Right Side Overlays (Summary & Zoom) */}
+      {!isSnapshotMode && (
+        <div className="absolute bottom-8 right-8 z-20 flex items-end gap-4 pointer-events-none">
+          
+          {/* Conditions Summary Card */}
+          {routeData && (
+            <div className="pointer-events-auto dash-glass p-5 shadow-2xl flex flex-col w-[320px] animate-in fade-in slide-in-from-bottom-4">
+              <h2 className="text-dash-label mb-1">Overall Trip Risk</h2>
+              <div className="flex items-baseline gap-1 mt-1 mb-4">
+                <span className="text-dash-hero">
+                  {(() => {
+                    const total = routeData.segments.length;
+                    if (total === 0) return 0;
+                    const critical = routeData.segments.filter(s => s.weather.severity === 'critical').length;
+                    const warning = routeData.segments.filter(s => s.weather.severity === 'warning').length;
+                    // Calculate a risk score from 0-100 where 100 is completely safe
+                    return Math.round(((total - critical - (warning * 0.5)) / total) * 100);
+                  })()}
+                </span>
+                <span className="text-dash-body text-[var(--color-dash-text-muted)]">/ 100</span>
+              </div>
+              
+              {/* Compact Table */}
+              <div className="relative border-t border-[var(--color-dash-border)] pt-3">
+                <div className="flex flex-col gap-2 max-h-[200px] overflow-y-auto no-scrollbar pb-6 [mask-image:linear-gradient(to_bottom,white_80%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,white_80%,transparent_100%)]">
+                  {routeData.segments.map((seg) => {
+                    const isSafe = seg.weather.severity === 'safe';
+                    const isWarning = seg.weather.severity === 'warning';
+                    return (
+                      <div key={seg.id} className="flex items-center justify-between py-1.5 border-b border-[var(--color-dash-border)]/50 last:border-0 hover:bg-[var(--color-dash-surface-hover)] -mx-2 px-2 rounded-lg transition-colors cursor-pointer" onClick={() => setSelectedMarker(seg)}>
+                        <span className="text-[11px] uppercase tracking-wider font-semibold text-[var(--color-dash-text-muted)] truncate max-w-[130px]">{seg.locationName}</span>
+                        <div className="flex items-center gap-4">
+                          <span className="text-dash-body font-mono text-[var(--color-dash-text)]">{seg.weather.temperatureF}°</span>
+                          <div className={`flex items-center gap-1 text-[11px] font-bold font-mono w-12 justify-end ${
+                            isSafe ? 'text-[var(--weather-safe)]' : 
+                            isWarning ? 'text-[var(--weather-warning)]' : 
+                            'text-[var(--weather-critical)]'
+                          }`}>
+                             <span>{isSafe ? '▲' : '▼'}</span>
+                             <span>{isSafe ? 'OK' : isWarning ? 'WRN' : 'RSK'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Minimal Zoom Controls */}
+          <div className="pointer-events-auto flex flex-col bg-[var(--color-dash-border)] p-[1px] rounded-full overflow-hidden shadow-2xl backdrop-blur-xl shrink-0">
+            <button 
+              onClick={() => mapRef.current?.zoomIn()}
+              className="w-10 h-10 bg-[var(--color-dash-surface)] hover:bg-[var(--color-dash-surface-hover)] flex items-center justify-center transition-colors rounded-t-full text-[var(--color-dash-text)] text-lg font-light"
+            >
+              +
+            </button>
+            <div className="h-[1px] w-full bg-[var(--color-dash-border)]"></div>
+            <button 
+              onClick={() => mapRef.current?.zoomOut()}
+              className="w-10 h-10 bg-[var(--color-dash-surface)] hover:bg-[var(--color-dash-surface-hover)] flex items-center justify-center transition-colors rounded-b-full text-[var(--color-dash-text)] text-lg font-light"
+            >
+              -
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Snapshot Overlay Graphic (Only visible in Snapshot Mode) */}
       {isSnapshotMode && routeData && (
         <div className="absolute inset-0 z-20 pointer-events-none flex flex-col justify-between p-8 md:p-12">
@@ -685,7 +713,7 @@ function App() {
             <h1 className="text-[2.5rem] leading-tight font-bold tracking-tight text-white mb-6">
               {originInput.split(',')[0]}<br/>
               <span className="text-text-primary0 font-medium tracking-normal text-3xl">to </span>
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-400 to-purple-500 text-4xl">{destInput.split(',')[0]}</span>
+              <span className="text-white text-4xl">{destInput.split(',')[0]}</span>
             </h1>
             
             <div className="flex items-center gap-8 mt-2 pt-6 border-t border-border-subtle">
@@ -708,39 +736,46 @@ function App() {
         </div>
       )}
 
-      {/* Theme Toggle (Standalone floating button) */}
-      {!isSnapshotMode && (
-        <div className="absolute top-4 right-4 md:top-6 md:right-6 z-30 pointer-events-auto">
-          <button 
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className="p-3 bg-bg-surface backdrop-blur-md border border-border-subtle rounded-full text-text-muted hover:text-text-primary hover:bg-bg-elevated hover:bg-bg-overlay transition-colors shadow-lg"
-            title={theme === 'dark' ? "Switch to Light Mode" : "Switch to Dark Mode"}
-          >
-            {theme === 'dark' ? <Sun size={24} weight="duotone" /> : <Moon size={24} weight="duotone" />}
-          </button>
-        </div>
-      )}
+
 
       {/* Sidebar Dashboard (Hidden in Snapshot Mode) */}
       {!isSnapshotMode && (
-        <div className="absolute top-0 left-0 w-full md:w-[400px] h-full flex flex-col p-4 md:p-6 z-10 pointer-events-none">
+        <div className="absolute top-0 left-0 w-full md:w-[400px] h-full flex flex-col gap-4 p-4 md:p-6 z-10 pointer-events-none">
           
-          {/* Input Panel */}
-          <div className="pointer-events-auto bg-bg-surface backdrop-blur-xl border border-border-subtle rounded-2xl p-5 mb-4 shadow-2xl flex-shrink-0 relative">
+          {/* Top Navigation Pill */}
+          <div className="pointer-events-auto flex items-center p-1.5 bg-[var(--color-dash-surface)] backdrop-blur-xl border border-[var(--color-dash-border)] rounded-full self-start shadow-2xl flex-shrink-0">
+            <div className="pl-3 pr-4 flex items-center justify-center text-[var(--color-dash-text)]">
+               <NavigationArrow size={20} weight="bold" className="-rotate-45" />
+            </div>
+            <div className="flex items-center gap-1">
+              <button className="px-5 py-2 bg-[var(--color-dash-text)] text-[var(--color-dash-bg)] rounded-full text-[13px] font-medium transition-colors">
+                Route Planner
+              </button>
+              <button className="px-5 py-2 text-[var(--color-dash-text-muted)] hover:text-[var(--color-dash-text)] rounded-full text-[13px] font-medium transition-colors">
+                Fleet
+              </button>
+              <button className="px-5 py-2 text-[var(--color-dash-text-muted)] hover:text-[var(--color-dash-text)] rounded-full text-[13px] font-medium transition-colors">
+                History
+              </button>
+            </div>
+          </div>
+
+          {/* Input Panel Card */}
+          <div className="pointer-events-auto dash-glass p-5 shadow-2xl flex-shrink-0 relative animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out fill-mode-both" style={{ animationDelay: '50ms' }}>
             
             {/* Share Dropdown */}
             <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
               <div className="relative">
                 <button 
                   onClick={() => setShowShareMenu(!showShareMenu)}
-                  className={`p-2 rounded-xl transition-colors ${showShareMenu ? 'bg-bg-elevated text-text-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-elevated hover:bg-bg-overlay'}`}
+                  className={`p-2 rounded-lg transition-colors ${showShareMenu ? 'bg-bg-elevated text-text-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-elevated hover:bg-bg-overlay'}`}
                   title="Share Route"
                 >
                   <ShareNetwork size={20} />
                 </button>
                 
                 {showShareMenu && (
-                  <div className="absolute right-0 mt-2 w-48 bg-bg-surface border border-border-subtle rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+                  <div className="absolute right-0 mt-2 w-48 bg-bg-surface border border-border-subtle rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
                   <button onClick={handleDownloadImage} className="w-full text-left px-4 py-3 text-sm text-text-secondary hover:bg-bg-elevated hover:text-text-primary flex items-center gap-3 transition-colors">
                     <ImageIcon size={18} />
                     Share Image
@@ -759,43 +794,35 @@ function App() {
               )}
             </div>
           </div>
-            <div className="flex flex-col gap-3 mt-1">
-              <div className="flex items-center gap-3 bg-bg-elevated hover:bg-bg-overlay rounded-xl px-4 py-3 border border-transparent focus-within:border-border-strong transition-colors mr-10">
-                <MapPin size={20} className="text-text-muted" />
+            <div className="flex flex-col gap-3 mt-1 pr-10">
+              <div className="flex items-center gap-3 bg-[var(--color-dash-surface-hover)] rounded-lg px-4 py-3 border border-transparent focus-within:border-[var(--color-dash-border)] transition-colors">
+                <MapPin size={20} className="text-[var(--color-dash-text-muted)]" />
                 <input 
                   type="text" 
                   value={originInput}
                   onChange={e => setOriginInput(e.target.value)}
-                  className="bg-transparent border-none outline-none text-sm w-full font-medium" 
+                  className="bg-transparent border-none outline-none text-dash-body w-full text-[var(--color-dash-text)]" 
                   placeholder="Starting location..."
                 />
               </div>
-              <div className="w-[1px] h-3 bg-border-strong ml-6"></div>
-              <div className="flex items-center gap-3 bg-bg-elevated hover:bg-bg-overlay rounded-xl px-4 py-3 border border-transparent focus-within:border-border-strong transition-colors">
-                <Flag size={20} className="text-text-muted" />
+              <div className="w-[1px] h-3 bg-[var(--color-dash-border)] ml-6"></div>
+              <div className="flex items-center gap-3 bg-[var(--color-dash-surface-hover)] rounded-lg px-4 py-3 border border-transparent focus-within:border-[var(--color-dash-border)] transition-colors">
+                <Flag size={20} className="text-[var(--color-dash-text-muted)]" />
                 <input 
                   type="text" 
                   value={destInput}
                   onChange={e => setDestInput(e.target.value)}
-                  className="bg-transparent border-none outline-none text-sm w-full font-medium" 
+                  className="bg-transparent border-none outline-none text-dash-body w-full text-[var(--color-dash-text)]" 
                   placeholder="Destination..."
                 />
               </div>
             </div>
             
-            <div className="mt-5 pt-4 border-t border-border-subtle flex justify-between items-end">
-              <div>
-                <div className="text-3xl font-bold tracking-tight">
-                  {routeData ? `${Math.floor(routeData.totalTimeMins / 60)}h ${routeData.totalTimeMins % 60}m` : '--h --m'}
-                </div>
-                <div className="text-sm text-text-muted font-mono mt-1">
-                  {routeData ? `${Math.round(routeData.totalDistanceMi)} mi` : '-- mi'}
-                </div>
-              </div>
+            <div className="mt-5 pt-4 border-t border-[var(--color-dash-border)] flex justify-end">
               <button 
                 onClick={() => calculateRoute()}
                 disabled={isLoading || routeState === 'animating'}
-                className="bg-accent-bg text-accent-text font-medium px-4 py-2 rounded-full text-sm hover:bg-accent-bg opacity-90 transition-colors active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="bg-[var(--color-dash-text)] text-[var(--color-dash-bg)] font-medium px-4 py-2 rounded-full text-[13px] hover:opacity-90 transition-opacity active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {isLoading ? (
                   <>
@@ -807,195 +834,93 @@ function App() {
             </div>
           </div>
 
-          {/* Timeline (Scrollable) */}
           {routeData && (
-            <div className={`pointer-events-auto bg-bg-surface backdrop-blur-xl border border-border-subtle rounded-2xl shadow-2xl relative flex flex-col transition-all duration-300 ${isTimelineExpanded ? 'flex-1 min-h-0' : ''}`}>
-              {/* Header */}
-              <div 
-                className={`flex items-center justify-between p-4 px-5 cursor-pointer hover:bg-bg-overlay transition-colors ${isTimelineExpanded ? 'border-b border-border-subtle' : ''}`}
-                onClick={() => setIsTimelineExpanded(!isTimelineExpanded)}
-              >
-                <h2 className="text-sm font-semibold uppercase tracking-widest text-text-secondary">Weather Route</h2>
-                <button 
-                  className="p-1 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-elevated transition-colors"
-                  title={isTimelineExpanded ? "Collapse Timeline" : "Expand Timeline"}
-                >
-                  {isTimelineExpanded ? <CaretDown size={18} weight="bold" /> : <CaretUp size={18} weight="bold" />}
-                </button>
+            <>
+              {/* Slim Status Row */}
+              <div className="pointer-events-auto dash-glass px-5 py-3 flex items-center justify-between shadow-2xl flex-shrink-0 animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out fill-mode-both" style={{ animationDelay: '100ms' }}>
+                <div className="flex items-center gap-2 text-dash-body">
+                  <div className="w-2 h-2 rounded-full bg-[var(--weather-safe)]"></div>
+                  <span>Safe Stops: {routeData.segments.filter(s => s.weather.severity === 'safe').length}</span>
+                </div>
+                <div className="flex items-center gap-2 text-dash-body">
+                  <div className="w-2 h-2 rounded-full bg-[var(--weather-critical)]"></div>
+                  <span>Warning/Critical: {routeData.segments.filter(s => s.weather.severity !== 'safe').length}</span>
+                </div>
               </div>
-              
-              {/* Content */}
-              {isTimelineExpanded && (
-                <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar p-5 pt-6">
-                  <div className="relative pl-6 pb-4">
-                    {/* Connecting line */}
-                    <div className="absolute top-4 bottom-4 left-[11px] w-[2px] bg-bg-elevated rounded-full"></div>
-                
-                <div className="flex flex-col gap-8">
-                  {routeData.segments.map((seg) => {
-                    const Icon = seg.weather.icon;
-                    const isSafe = seg.weather.severity === 'safe';
-                    const isWarning = seg.weather.severity === 'warning';
-                    
-                    // Dim timeline items if they haven't been reached yet during animation
-                    const currentDist = progress * routeData.totalDistanceMi;
-                    const isReached = routeState === 'visible' || currentDist >= seg.distanceFromStartMi;
 
-                    return (
-                      <div key={seg.id} className={`relative transition-opacity duration-500 ${isReached ? 'opacity-100' : 'opacity-30'}`}>
-                        {/* Node */}
-                        <div className={`absolute -left-6 w-3 h-3 rounded-full border-2 border-bg-base mt-1.5 z-10 
-                          ${isSafe ? 'bg-weather-safe' : isWarning ? 'bg-weather-warning' : 'bg-weather-critical'}`}>
+              {/* Hero Metric Card */}
+              <div className="pointer-events-auto dash-glass p-5 flex flex-col shadow-2xl flex-shrink-0 relative overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out fill-mode-both" style={{ animationDelay: '150ms' }}>
+                <h2 className="text-dash-label mb-1">Route Distance & Time</h2>
+                <div className="flex items-baseline gap-1 mt-1">
+                  <span className="text-dash-hero">{Math.round(routeData.totalDistanceMi)}</span>
+                  <span className="text-dash-body text-[var(--color-dash-text-muted)]">mi</span>
+                </div>
+                <div className="flex items-baseline gap-1 mt-1">
+                  <span className="text-dash-hero">{Math.floor(routeData.totalTimeMins / 60)}h {routeData.totalTimeMins % 60}m</span>
+                </div>
+                {/* Visual Sparkline */}
+                <svg className="absolute bottom-0 right-0 w-32 h-16 opacity-20 pointer-events-none animate-draw" viewBox="0 0 100 50" preserveAspectRatio="none">
+                  <path d="M0,50 L10,35 L30,40 L50,20 L70,30 L90,10 L100,5" fill="none" stroke="var(--color-dash-text)" strokeWidth="2" vectorEffect="non-scaling-stroke"/>
+                </svg>
+              </div>
+
+              {/* Scrollable Checkpoint List (Replaces Timeline) */}
+              <div className="pointer-events-auto flex flex-col gap-3 flex-1 overflow-y-auto no-scrollbar pb-10 min-h-0 animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out fill-mode-both [mask-image:linear-gradient(to_bottom,white_85%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,white_85%,transparent_100%)]" style={{ animationDelay: '200ms' }}>
+                {routeData.segments.map((seg) => {
+                  const Icon = IconMap[seg.weather.icon] || Sun;
+                  const isSafe = seg.weather.severity === 'safe';
+                  const isWarning = seg.weather.severity === 'warning';
+                  
+                  const currentDist = progress * routeData.totalDistanceMi;
+                  const isReached = routeState === 'visible' || currentDist >= seg.distanceFromStartMi;
+                  // Calculate progress for this segment (starts when passed previous segment, finishes when passing this one)
+                  const progressPercent = Math.min(100, Math.max(0, (currentDist / seg.distanceFromStartMi) * 100));
+                  
+                  return (
+                    <div 
+                      key={seg.id} 
+                      onClick={() => setSelectedMarker(seg)}
+                      className={`dash-glass p-4 transition-all duration-500 cursor-pointer hover:bg-[var(--color-dash-surface-hover)] ${isReached ? 'opacity-100' : 'opacity-40'}`}
+                    >
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className={`p-1.5 rounded-lg ${isSafe ? 'text-[var(--weather-safe)] bg-[var(--weather-safe-bg)]' : isWarning ? 'text-[var(--weather-warning)] bg-[var(--weather-warning-bg)]' : 'text-[var(--weather-critical)] bg-[var(--weather-critical-bg)]'}`}>
+                            <Icon size={16} weight="duotone" />
+                          </div>
+                          <div>
+                            <h3 className="text-dash-body font-medium truncate max-w-[120px]">{seg.locationName}</h3>
+                            <div className="text-dash-label mt-0.5">+{seg.timeFromStartMins}m</div>
+                          </div>
                         </div>
-
-                        <div className="flex flex-col gap-1">
-                          <div className="flex justify-between items-baseline">
-                            <h3 className="font-medium text-text-primary truncate pr-2 max-w-[150px]">{seg.locationName}</h3>
-                            <span className="text-xs font-mono text-text-primary0 flex-shrink-0">+{seg.timeFromStartMins}m</span>
-                          </div>
-                          
-                          <div className="flex items-center gap-4 mt-2">
-                            <div className="flex items-center gap-2">
-                              <Icon size={24} className={isSafe ? 'text-weather-safe' : isWarning ? 'text-weather-warning' : 'text-weather-critical'} weight="duotone" />
-                              <span className="font-mono text-lg">{seg.weather.temperatureF}°</span>
-                            </div>
-                            <span className="text-sm text-text-muted">{seg.weather.condition}</span>
-                          </div>
-
-                          {seg.alert && (
-                            <div className={`mt-3 inline-flex items-center px-3 py-1 rounded-full text-xs font-medium self-start
-                              ${isWarning ? 'bg-weather-warning-bg text-weather-warning border border-weather-warning-bg' : 
-                              'bg-weather-critical-bg text-weather-critical border border-weather-critical-bg'}`}>
-                              {seg.alert}
-                            </div>
-                          )}
-
-                          {/* Interactive button to show details */}
-                          <button 
-                            onClick={() => setSelectedMarker(seg)}
-                            className="mt-3 text-xs font-medium text-text-muted hover:text-text-secondary self-start transition-colors px-2 py-1 -ml-2 rounded-md hover:bg-bg-elevated hover:bg-bg-overlay"
-                          >
-                            More info
-                          </button>
+                        <div className="text-right">
+                          <div className="text-dash-hero !text-xl !leading-none">{seg.weather.temperatureF}°</div>
                         </div>
                       </div>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
-            )}
-          </div>
-          )}
-        </div>
-      )}
-      {/* Detailed Weather Modal (Hidden in Snapshot Mode) */}
-      {!isSnapshotMode && selectedMarker && (
-        <div 
-          className="absolute inset-0 z-50 flex items-center justify-center p-4 md:p-8 bg-black/40 backdrop-blur-sm pointer-events-auto animate-in fade-in duration-200"
-          onClick={() => setSelectedMarker(null)}
-        >
-          <div 
-            className="bg-bg-surface border border-border-subtle rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 max-h-[85vh] flex flex-col"
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="flex justify-between items-start p-6 pb-4 bg-bg-surface z-10 sticky top-0 border-b border-border-subtle">
-              <div>
-                <h2 className="text-xl font-bold text-text-primary">{selectedMarker.locationName}</h2>
-                <p className="text-sm text-text-muted mt-1">Arrival: {selectedMarker.timeFromStartMins} mins from start</p>
-              </div>
-              <button 
-                onClick={() => setSelectedMarker(null)}
-                className="p-2 rounded-full hover:bg-bg-elevated text-text-muted hover:text-text-primary transition-colors"
-              >
-                <X size={20} />
-              </button>
-            </div>
+                      
+                      <div className="flex items-center gap-2 mb-3">
+                        {seg.alert && (
+                          <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full ${isWarning ? 'bg-[var(--weather-warning-bg)] text-[var(--weather-warning)]' : 'bg-[var(--weather-critical-bg)] text-[var(--weather-critical)]'}`}>
+                            {seg.alert.split(' ')[0]}
+                          </span>
+                        )}
+                        <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-white/10 text-white/70">
+                          {seg.weather.condition}
+                        </span>
+                      </div>
 
-            {/* Modal Body */}
-            <div className="px-6 pb-6 pt-4 space-y-6 overflow-y-auto no-scrollbar flex-1">
-              
-              {/* Main Temp & Condition */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className={`p-4 rounded-2xl ${
-                    selectedMarker.weather.severity === 'safe' ? 'bg-weather-safe-bg text-weather-safe' : 
-                    selectedMarker.weather.severity === 'warning' ? 'bg-weather-warning-bg text-weather-warning' : 'bg-weather-critical-bg text-weather-critical'
-                  }`}>
-                    <selectedMarker.weather.icon size={48} weight="duotone" />
-                  </div>
-                  <div>
-                    <div className="text-5xl font-bold font-mono tracking-tight">{selectedMarker.weather.temperatureF}°</div>
-                    <div className="text-lg text-text-secondary font-medium">{selectedMarker.weather.condition}</div>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-sm text-text-muted mb-1">Feels Like</div>
-                  <div className="text-2xl font-mono text-text-secondary">{selectedMarker.weather.feelsLikeF}°</div>
-                </div>
-              </div>
-
-              {/* Grid Stats */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-bg-elevated hover:bg-bg-overlay rounded-xl p-3 flex items-center gap-3 border border-border-subtle">
-                  <Wind size={20} className="text-text-muted" />
-                  <div>
-                    <div className="text-xs text-text-primary0">Wind</div>
-                    <div className="text-sm font-medium">{selectedMarker.weather.windSpeedMph} mph {selectedMarker.weather.windDirection}</div>
-                  </div>
-                </div>
-                <div className="bg-bg-elevated hover:bg-bg-overlay rounded-xl p-3 flex items-center gap-3 border border-border-subtle">
-                  <Drop size={20} className="text-weather-safe" />
-                  <div>
-                    <div className="text-xs text-text-primary0">Precipitation</div>
-                    <div className="text-sm font-medium">{selectedMarker.weather.precipitationIn}" / {selectedMarker.weather.rainProbability}%</div>
-                  </div>
-                </div>
-                <div className="bg-bg-elevated hover:bg-bg-overlay rounded-xl p-3 flex items-center gap-3 border border-border-subtle">
-                  <Eye size={20} className="text-text-muted" />
-                  <div>
-                    <div className="text-xs text-text-primary0">Visibility</div>
-                    <div className="text-sm font-medium">{selectedMarker.weather.visibilityMi} mi</div>
-                  </div>
-                </div>
-                <div className="bg-bg-elevated hover:bg-bg-overlay rounded-xl p-3 flex items-center gap-3 border border-border-subtle">
-                  <CloudCheck size={20} className="text-text-muted" />
-                  <div>
-                    <div className="text-xs text-text-primary0">Cloud Cover</div>
-                    <div className="text-sm font-medium">{selectedMarker.weather.cloudCover}%</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Alerts & Risk */}
-              <div className="space-y-3">
-                {selectedMarker.alert && (
-                  <div className={`p-4 rounded-xl border flex items-start gap-3 ${
-                    selectedMarker.weather.severity === 'warning' ? 'bg-weather-warning-bg border-weather-warning-bg text-weather-warning' : 
-                    'bg-weather-critical-bg border-weather-critical-bg text-weather-critical'
-                  }`}>
-                    <Warning size={20} weight="fill" className="mt-0.5 shrink-0" />
-                    <div>
-                      <div className="font-semibold text-sm mb-0.5">Active Alert</div>
-                      <div className="text-sm opacity-90">{selectedMarker.alert}</div>
+                      {/* Thin Progress Bar */}
+                      <div className="w-full h-[2px] bg-white/10 rounded-full overflow-hidden relative">
+                        <div 
+                          className="absolute top-0 left-0 h-full bg-white/50 transition-all duration-300" 
+                          style={{ width: `${progressPercent}%` }}
+                        ></div>
+                      </div>
                     </div>
-                  </div>
-                )}
-                
-                <div className="bg-bg-overlay rounded-xl p-4 border border-border-subtle">
-                  <div className="font-medium text-sm text-text-secondary mb-2">Road Risk Assessment</div>
-                  <div className="text-sm text-text-muted leading-relaxed">{selectedMarker.weather.riskAssessment}</div>
-                </div>
-
-                <div className="bg-bg-overlay rounded-xl p-4 border border-border-subtle">
-                  <div className="font-medium text-sm text-text-secondary mb-2">Forecast</div>
-                  <div className="text-sm text-text-muted leading-relaxed">{selectedMarker.weather.forecastText}</div>
-                </div>
+                  )
+                })}
               </div>
-
-            </div>
-          </div>
+            </>
+          )}
         </div>
       )}
 

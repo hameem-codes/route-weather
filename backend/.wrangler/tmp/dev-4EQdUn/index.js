@@ -1,7 +1,7 @@
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
-// .wrangler/tmp/bundle-vmZpaS/checked-fetch.js
+// .wrangler/tmp/bundle-UtjBlb/checked-fetch.js
 var urls = /* @__PURE__ */ new Set();
 function checkURL(request, init) {
   const url = request instanceof URL ? request : new URL(
@@ -27,7 +27,7 @@ globalThis.fetch = new Proxy(globalThis.fetch, {
   }
 });
 
-// .wrangler/tmp/bundle-vmZpaS/strip-cf-connecting-ip-header.js
+// .wrangler/tmp/bundle-UtjBlb/strip-cf-connecting-ip-header.js
 function stripCfConnectingIPHeader(input, init) {
   const request = new Request(input, init);
   request.headers.delete("CF-Connecting-IP");
@@ -2213,232 +2213,6 @@ var cors = /* @__PURE__ */ __name((options) => {
   }, "cors2");
 }, "cors");
 
-// node_modules/@turf/helpers/dist/esm/index.js
-var earthRadius = 63710088e-1;
-var factors = {
-  centimeters: earthRadius * 100,
-  centimetres: earthRadius * 100,
-  cm: earthRadius * 100,
-  degrees: 360 / (2 * Math.PI),
-  deg: 360 / (2 * Math.PI),
-  feet: earthRadius * 3.28084,
-  ft: earthRadius * 3.28084,
-  inches: earthRadius * 39.37,
-  in: earthRadius * 39.37,
-  kilometers: earthRadius / 1e3,
-  kilometres: earthRadius / 1e3,
-  km: earthRadius / 1e3,
-  meters: earthRadius,
-  metres: earthRadius,
-  m: earthRadius,
-  miles: earthRadius / 1609.344,
-  mi: earthRadius / 1609.344,
-  millimeters: earthRadius * 1e3,
-  millimetres: earthRadius * 1e3,
-  mm: earthRadius * 1e3,
-  nauticalmiles: earthRadius / 1852,
-  nmi: earthRadius / 1852,
-  radians: 1,
-  rad: 1,
-  yards: earthRadius * 1.0936,
-  yd: earthRadius * 1.0936
-};
-function feature(geom, properties, options = {}) {
-  const feat = { type: "Feature" };
-  if (options.id === 0 || options.id) {
-    feat.id = options.id;
-  }
-  if (options.bbox) {
-    feat.bbox = options.bbox;
-  }
-  feat.properties = properties || {};
-  feat.geometry = geom;
-  return feat;
-}
-__name(feature, "feature");
-function point(coordinates, properties, options = {}) {
-  if (!coordinates) {
-    throw new Error("coordinates is required");
-  }
-  if (!Array.isArray(coordinates)) {
-    throw new Error("coordinates must be an Array");
-  }
-  if (coordinates.length < 2) {
-    throw new Error("coordinates must be at least 2 numbers long");
-  }
-  if (!isNumber(coordinates[0]) || !isNumber(coordinates[1])) {
-    throw new Error("coordinates must contain numbers");
-  }
-  const geom = {
-    type: "Point",
-    coordinates
-  };
-  return feature(geom, properties, options);
-}
-__name(point, "point");
-function lineString(coordinates, properties, options = {}) {
-  if (coordinates.length < 2) {
-    throw new Error("coordinates must be an array of two or more positions");
-  }
-  const geom = {
-    type: "LineString",
-    coordinates
-  };
-  return feature(geom, properties, options);
-}
-__name(lineString, "lineString");
-function radiansToLength(radians, units = "kilometers") {
-  const factor = factors[units];
-  if (!factor) {
-    throw new Error(units + " units is invalid");
-  }
-  return radians * factor;
-}
-__name(radiansToLength, "radiansToLength");
-function lengthToRadians(distance2, units = "kilometers") {
-  const factor = factors[units];
-  if (!factor) {
-    throw new Error(units + " units is invalid");
-  }
-  return distance2 / factor;
-}
-__name(lengthToRadians, "lengthToRadians");
-function radiansToDegrees(radians) {
-  const normalisedRadians = radians % (2 * Math.PI);
-  return normalisedRadians * 180 / Math.PI;
-}
-__name(radiansToDegrees, "radiansToDegrees");
-function degreesToRadians(degrees) {
-  const normalisedDegrees = degrees % 360;
-  return normalisedDegrees * Math.PI / 180;
-}
-__name(degreesToRadians, "degreesToRadians");
-function isNumber(num) {
-  return !isNaN(num) && num !== null && !Array.isArray(num);
-}
-__name(isNumber, "isNumber");
-
-// node_modules/@turf/invariant/dist/esm/index.js
-function getCoord(coord) {
-  if (!coord) {
-    throw new Error("coord is required");
-  }
-  if (!Array.isArray(coord)) {
-    if (coord.type === "Feature" && coord.geometry !== null && coord.geometry.type === "Point") {
-      return [...coord.geometry.coordinates];
-    }
-    if (coord.type === "Point") {
-      return [...coord.coordinates];
-    }
-  }
-  if (Array.isArray(coord) && coord.length >= 2 && !Array.isArray(coord[0]) && !Array.isArray(coord[1])) {
-    return [...coord];
-  }
-  throw new Error("coord must be GeoJSON Point or an Array of numbers");
-}
-__name(getCoord, "getCoord");
-function getGeom(geojson) {
-  if (geojson.type === "Feature") {
-    return geojson.geometry;
-  }
-  return geojson;
-}
-__name(getGeom, "getGeom");
-
-// node_modules/@turf/bearing/dist/esm/index.js
-function bearing(start, end, options = {}) {
-  if (options.final === true) {
-    return calculateFinalBearing(start, end);
-  }
-  const coordinates1 = getCoord(start);
-  const coordinates2 = getCoord(end);
-  const lon1 = degreesToRadians(coordinates1[0]);
-  const lon2 = degreesToRadians(coordinates2[0]);
-  const lat1 = degreesToRadians(coordinates1[1]);
-  const lat2 = degreesToRadians(coordinates2[1]);
-  const a = Math.sin(lon2 - lon1) * Math.cos(lat2);
-  const b = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(lon2 - lon1);
-  return radiansToDegrees(Math.atan2(a, b));
-}
-__name(bearing, "bearing");
-function calculateFinalBearing(start, end) {
-  let bear = bearing(end, start);
-  bear = (bear + 180) % 360;
-  return bear > 180 ? bear - 360 : bear;
-}
-__name(calculateFinalBearing, "calculateFinalBearing");
-
-// node_modules/@turf/destination/dist/esm/index.js
-function destination(origin, distance2, bearing2, options = {}) {
-  const coordinates1 = getCoord(origin);
-  const longitude1 = degreesToRadians(coordinates1[0]);
-  const latitude1 = degreesToRadians(coordinates1[1]);
-  const bearingRad = degreesToRadians(bearing2);
-  const radians = lengthToRadians(distance2, options.units);
-  const latitude2 = Math.asin(
-    Math.sin(latitude1) * Math.cos(radians) + Math.cos(latitude1) * Math.sin(radians) * Math.cos(bearingRad)
-  );
-  const longitude2 = longitude1 + Math.atan2(
-    Math.sin(bearingRad) * Math.sin(radians) * Math.cos(latitude1),
-    Math.cos(radians) - Math.sin(latitude1) * Math.sin(latitude2)
-  );
-  const lng = radiansToDegrees(longitude2);
-  const lat = radiansToDegrees(latitude2);
-  if (coordinates1[2] !== void 0) {
-    return point([lng, lat, coordinates1[2]], options.properties);
-  }
-  return point([lng, lat], options.properties);
-}
-__name(destination, "destination");
-
-// node_modules/@turf/distance/dist/esm/index.js
-function distance(from, to, options = {}) {
-  var coordinates1 = getCoord(from);
-  var coordinates2 = getCoord(to);
-  var dLat = degreesToRadians(coordinates2[1] - coordinates1[1]);
-  var dLon = degreesToRadians(coordinates2[0] - coordinates1[0]);
-  var lat1 = degreesToRadians(coordinates1[1]);
-  var lat2 = degreesToRadians(coordinates2[1]);
-  var a = Math.pow(Math.sin(dLat / 2), 2) + Math.pow(Math.sin(dLon / 2), 2) * Math.cos(lat1) * Math.cos(lat2);
-  return radiansToLength(
-    2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)),
-    options.units
-  );
-}
-__name(distance, "distance");
-var index_default = distance;
-
-// node_modules/@turf/along/dist/esm/index.js
-function along(line, distance2, options = {}) {
-  const geom = getGeom(line);
-  const coords = geom.coordinates;
-  let travelled = 0;
-  for (let i = 0; i < coords.length; i++) {
-    if (distance2 >= travelled && i === coords.length - 1) {
-      break;
-    } else if (travelled >= distance2) {
-      const overshot = distance2 - travelled;
-      if (!overshot) {
-        return point(coords[i]);
-      } else {
-        const direction = bearing(coords[i], coords[i - 1]) - 180;
-        const interpolated = destination(
-          coords[i],
-          overshot,
-          direction,
-          options
-        );
-        return interpolated;
-      }
-    } else {
-      travelled += distance(coords[i], coords[i + 1], options);
-    }
-  }
-  return point(coords[coords.length - 1]);
-}
-__name(along, "along");
-var index_default2 = along;
-
 // src/index.ts
 var app = new Hono2();
 app.use("/api/*", cors({
@@ -2578,171 +2352,6 @@ app.get("/api/geocode", async (c) => {
     return c.json({ error: err.message }, 500);
   }
 });
-app.post("/api/weather/route", async (c) => {
-  try {
-    const body = await c.req.json();
-    const { geometry, duration, originName, destName } = body;
-    if (!geometry || !geometry.coordinates || !duration) {
-      return c.json({ error: "geometry and duration are required" }, 400);
-    }
-    const coords = geometry.coordinates;
-    const routeLine = lineString(coords);
-    let cumulativeDistances = [0];
-    for (let i = 1; i < coords.length; i++) {
-      cumulativeDistances.push(cumulativeDistances[i - 1] + index_default(point(coords[i - 1]), point(coords[i]), { units: "miles" }));
-    }
-    const totalDistanceMi = cumulativeDistances[cumulativeDistances.length - 1];
-    const totalTimeMins = Math.round(duration / 60);
-    let numSegments = Math.max(3, Math.min(10, Math.ceil(totalDistanceMi / 30)));
-    const checkpoints = [];
-    for (let i = 0; i < numSegments; i++) {
-      const dist = i / (numSegments - 1) * totalDistanceMi;
-      const pt = index_default2(routeLine, dist, { units: "miles" });
-      const timeMins = Math.round(i / (numSegments - 1) * totalTimeMins);
-      let locName = `Checkpoint ${i}`;
-      if (i === 0 && originName)
-        locName = originName;
-      if (i === numSegments - 1 && destName)
-        locName = destName;
-      checkpoints.push({
-        id: `seg_${i}`,
-        distanceFromStartMi: dist,
-        timeFromStartMins: timeMins,
-        locationName: locName,
-        coordinates: pt.geometry.coordinates
-        // [lng, lat]
-      });
-    }
-    const lats = checkpoints.map((c2) => c2.coordinates[1]).join(",");
-    const lngs = checkpoints.map((c2) => c2.coordinates[0]).join(",");
-    const meteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lngs}&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,wind_speed_10m,wind_direction_10m,relative_humidity_2m,visibility,cloud_cover,weather_code,uv_index&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto`;
-    const cacheUrl = new URL(c.req.url);
-    const cacheKeyStr = `${cacheUrl.origin}/api/weather/route?hash=${lats.substring(0, 10)}-${lngs.substring(0, 10)}`;
-    const cacheKey = new Request(cacheKeyStr);
-    const cache = caches.default;
-    let meteoData;
-    const cachedResponse = await cache.match(cacheKey);
-    if (cachedResponse) {
-      meteoData = await cachedResponse.json();
-    } else {
-      const meteoRes = await fetch(meteoUrl);
-      if (!meteoRes.ok)
-        throw new Error(`Open-Meteo failed: ${meteoRes.status}`);
-      meteoData = await meteoRes.json();
-      c.executionCtx.waitUntil(cache.put(cacheKey, new Response(JSON.stringify(meteoData), {
-        headers: { "Cache-Control": "public, max-age=900" }
-        // 15 mins
-      })));
-    }
-    const now = /* @__PURE__ */ new Date();
-    const results = checkpoints.map((cp, idx) => {
-      const locationData = Array.isArray(meteoData) ? meteoData[idx] : meteoData;
-      const arrivalTime = new Date(now.getTime() + cp.timeFromStartMins * 6e4);
-      const hourly = locationData.hourly;
-      let hourIndex = 0;
-      let minDiff = Infinity;
-      hourly.time.forEach((timeStr, i) => {
-        const time = new Date(timeStr);
-        const diff = Math.abs(time.getTime() - arrivalTime.getTime());
-        if (diff < minDiff) {
-          minDiff = diff;
-          hourIndex = i;
-        }
-      });
-      const wmoCode = hourly.weather_code[hourIndex];
-      let condition = "Clear";
-      let severity = "safe";
-      let icon = "Sun";
-      let alert = null;
-      let riskAssessment = "Optimal driving conditions.";
-      if (wmoCode === 0) {
-        condition = "Clear";
-        icon = "Sun";
-      } else if (wmoCode === 1 || wmoCode === 2) {
-        condition = "Partly Cloudy";
-        icon = "Cloud";
-      } else if (wmoCode === 3) {
-        condition = "Overcast";
-        icon = "Cloud";
-      } else if (wmoCode >= 45 && wmoCode <= 48) {
-        condition = "Fog";
-        icon = "Cloud";
-        severity = "warning";
-        riskAssessment = "Reduced visibility. Drive with caution.";
-      } else if (wmoCode >= 51 && wmoCode <= 57) {
-        condition = "Drizzle";
-        icon = "CloudRain";
-      } else if (wmoCode >= 61 && wmoCode <= 65) {
-        condition = "Rain";
-        icon = "CloudRain";
-        severity = "warning";
-        riskAssessment = "Reduced traction. Increase following distance.";
-        if (wmoCode === 65) {
-          condition = "Heavy Rain";
-          icon = "CloudLightning";
-          alert = "Heavy Downpour";
-          riskAssessment = "High risk of hydroplaning.";
-        }
-      } else if (wmoCode >= 71 && wmoCode <= 77) {
-        condition = "Snow";
-        icon = "Snowflake";
-        severity = "critical";
-        riskAssessment = "Severe winter conditions.";
-        alert = "Snow/Ice on roads";
-      } else if (wmoCode >= 80 && wmoCode <= 82) {
-        condition = "Rain Showers";
-        icon = "CloudRain";
-        severity = "warning";
-      } else if (wmoCode >= 85 && wmoCode <= 86) {
-        condition = "Snow Showers";
-        icon = "CloudSnow";
-        severity = "critical";
-        alert = "Snow Showers";
-      } else if (wmoCode >= 95) {
-        condition = "Thunderstorm";
-        icon = "CloudLightning";
-        severity = "critical";
-        alert = "Thunderstorm Warning";
-        riskAssessment = "Dangerous driving conditions.";
-      }
-      const windSpeed = hourly.wind_speed_10m[hourIndex];
-      if (windSpeed > 30) {
-        severity = "critical";
-        alert = "High Wind Warning";
-        riskAssessment = "Dangerous crosswinds for high-profile vehicles.";
-      }
-      const degreesToDirection = /* @__PURE__ */ __name((deg) => {
-        const dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
-        return dirs[Math.round(deg / 45) % 8];
-      }, "degreesToDirection");
-      return {
-        ...cp,
-        weather: {
-          condition,
-          temperatureF: Math.round(hourly.temperature_2m[hourIndex]),
-          severity,
-          icon,
-          // String name of the icon
-          rainProbability: hourly.precipitation_probability[hourIndex],
-          feelsLikeF: Math.round(hourly.apparent_temperature[hourIndex]),
-          humidity: hourly.relative_humidity_2m[hourIndex],
-          windSpeedMph: Math.round(windSpeed),
-          windDirection: degreesToDirection(hourly.wind_direction_10m[hourIndex]),
-          visibilityMi: Math.round(hourly.visibility[hourIndex] / 1609.34 * 10) / 10,
-          precipitationIn: hourly.precipitation[hourIndex],
-          cloudCover: hourly.cloud_cover[hourIndex],
-          uvIndex: hourly.uv_index ? hourly.uv_index[hourIndex] : 0,
-          forecastText: `${condition} expected at arrival time.`,
-          riskAssessment
-        },
-        alert
-      };
-    });
-    return c.json({ success: true, data: results });
-  } catch (err) {
-    return c.json({ error: err.message }, 500);
-  }
-});
 var src_default = app;
 
 // node_modules/wrangler/templates/middleware/middleware-ensure-req-body-drained.ts
@@ -2786,7 +2395,7 @@ var jsonError = /* @__PURE__ */ __name(async (request, env, _ctx, middlewareCtx)
 }, "jsonError");
 var middleware_miniflare3_json_error_default = jsonError;
 
-// .wrangler/tmp/bundle-vmZpaS/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-UtjBlb/middleware-insertion-facade.js
 var __INTERNAL_WRANGLER_MIDDLEWARE__ = [
   middleware_ensure_req_body_drained_default,
   middleware_miniflare3_json_error_default
@@ -2818,7 +2427,7 @@ function __facade_invoke__(request, env, ctx, dispatch, finalMiddleware) {
 }
 __name(__facade_invoke__, "__facade_invoke__");
 
-// .wrangler/tmp/bundle-vmZpaS/middleware-loader.entry.ts
+// .wrangler/tmp/bundle-UtjBlb/middleware-loader.entry.ts
 var __Facade_ScheduledController__ = class {
   constructor(scheduledTime, cron, noRetry) {
     this.scheduledTime = scheduledTime;
