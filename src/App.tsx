@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import {
   MapPin,
   Flag,
@@ -102,31 +102,38 @@ const hardcodedWeatherProfiles = [
   }
 ];
 
-const rasterMapStyle = {
+const getRasterMapStyle = (theme: 'dark' | 'light') => ({
   version: 8,
   sources: {
-    'carto-dark': {
+    'carto-basemap': {
       type: 'raster',
-      tiles: [
-        'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-        'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-        'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-        'https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
-      ],
+      tiles: theme === 'dark' 
+        ? [
+            'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+            'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+            'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+            'https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
+          ]
+        : [
+            'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+            'https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+            'https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+            'https://d.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'
+          ],
       tileSize: 256,
       attribution: '&copy; <a href="https://carto.com/">CARTO</a>'
     }
   },
   layers: [
     {
-      id: 'carto-dark-layer',
+      id: 'carto-basemap-layer',
       type: 'raster',
-      source: 'carto-dark',
+      source: 'carto-basemap',
       minzoom: 0,
       maxzoom: 22
     }
   ]
-};
+});
 
 function getSlicedCoordinates(coords: number[][], dists: number[], startDist: number, endDist: number) {
   const result: number[][] = [];
@@ -190,7 +197,7 @@ function App() {
   const [routeState, setRouteState] = useState<'hidden' | 'animating' | 'visible'>('hidden');
   const [progress, setProgress] = useState(0); // 0 to 1
   const [isTimelineExpanded, setIsTimelineExpanded] = useState(true);
-  const [theme, setTheme] = useState<'dark' | 'night'>('dark');
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
 
   // Marker & Share Interaction State
   const [hoveredMarkerId, setHoveredMarkerId] = useState<string | null>(null);
@@ -490,8 +497,10 @@ function App() {
     }
   };
 
+  const currentMapStyle = useMemo(() => getRasterMapStyle(theme), [theme]);
+
   return (
-    <div ref={containerRef} className={`relative w-full h-screen overflow-hidden text-text-primary font-sans flex ${theme === 'night' ? 'theme-night' : ''} ${isSnapshotMode ? 'bg-transparent pointer-events-none snapshot-mode' : 'bg-bg-base'}`}>
+    <div ref={containerRef} className={`relative w-full h-screen overflow-hidden text-text-primary font-sans flex ${theme === 'light' ? 'theme-light' : ''} ${isSnapshotMode ? 'bg-transparent pointer-events-none snapshot-mode' : 'bg-bg-base'}`}>
       <style>
         {isSnapshotMode && `
           .maplibregl-ctrl-bottom-left, .maplibregl-ctrl-bottom-right, .maplibregl-ctrl-top-left, .maplibregl-ctrl-top-right {
@@ -512,7 +521,7 @@ function App() {
           }}
           canvasContextAttributes={{ preserveDrawingBuffer: true }} // MapLibre GL JS configuration for exporting canvas
           style={{ width: '100%', height: '100%' }}
-          mapStyle={rasterMapStyle as any}
+          mapStyle={currentMapStyle as any}
         >
           {/* Glowing Route Line Segments sliced along REAL road geometry */}
           {(routeState === 'animating' || routeState === 'visible') && routeData && routeData.segments.slice(0, -1).map((seg, i) => {
@@ -536,11 +545,11 @@ function App() {
               return null;
             }
 
-            const glowColor = theme === 'night' 
+            const glowColor = theme === 'light' 
               ? (severity === 'safe' ? '#0ea5e9' : severity === 'warning' ? '#fbbf24' : severity === 'critical' ? '#ec4899' : '#c084fc')
               : (severity === 'safe' ? '#3b82f6' : severity === 'warning' ? '#f59e0b' : severity === 'critical' ? '#d946ef' : '#a855f7');
               
-            const coreColor = theme === 'night'
+            const coreColor = theme === 'light'
               ? (severity === 'safe' ? '#7dd3fc' : severity === 'warning' ? '#fde047' : severity === 'critical' ? '#f472b6' : '#d8b4fe')
               : (severity === 'safe' ? '#93c5fd' : severity === 'warning' ? '#fcd34d' : severity === 'critical' ? '#f0abfc' : '#d8b4fe');
 
@@ -744,6 +753,19 @@ function App() {
         </div>
       )}
 
+      {/* Theme Toggle (Standalone floating button) */}
+      {!isSnapshotMode && (
+        <div className="absolute top-4 right-4 md:top-6 md:right-6 z-30 pointer-events-auto">
+          <button 
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            className="p-3 bg-bg-surface backdrop-blur-md border border-border-subtle rounded-full text-text-muted hover:text-text-primary hover:bg-bg-elevated hover:bg-bg-overlay transition-colors shadow-lg"
+            title={theme === 'dark' ? "Switch to Light Mode" : "Switch to Dark Mode"}
+          >
+            {theme === 'dark' ? <Sun size={24} weight="duotone" /> : <Moon size={24} weight="duotone" />}
+          </button>
+        </div>
+      )}
+
       {/* Sidebar Dashboard (Hidden in Snapshot Mode) */}
       {!isSnapshotMode && (
         <div className="absolute top-0 left-0 w-full md:w-[400px] h-full flex flex-col p-4 md:p-6 z-10 pointer-events-none">
@@ -751,16 +773,8 @@ function App() {
           {/* Input Panel */}
           <div className="pointer-events-auto bg-bg-surface backdrop-blur-xl border border-border-subtle rounded-2xl p-5 mb-4 shadow-2xl flex-shrink-0 relative">
             
-            {/* Share & Theme Dropdowns */}
+            {/* Share Dropdown */}
             <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
-              <button 
-                onClick={() => setTheme(theme === 'dark' ? 'night' : 'dark')}
-                className={`p-2 rounded-xl transition-colors text-text-muted hover:text-text-primary hover:bg-bg-elevated hover:bg-bg-overlay`}
-                title={theme === 'dark' ? "Switch to Night Mode" : "Switch to Dark Mode"}
-              >
-                {theme === 'dark' ? <Moon size={20} /> : <Sun size={20} />}
-              </button>
-              
               <div className="relative">
                 <button 
                   onClick={() => setShowShareMenu(!showShareMenu)}

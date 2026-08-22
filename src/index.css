@@ -61,33 +61,33 @@
   --weather-extreme-bg: rgba(168, 85, 247, 0.1);
 }
 
-.theme-night {
-  /* Night Mode (Deep slate/indigo tones) */
-  --bg-base: #020617; /* slate-950 */
-  --bg-surface: rgba(15, 23, 42, 0.8); /* slate-900/80 */
-  --bg-elevated: rgba(30, 41, 59, 0.8); /* slate-800/80 */
-  --bg-overlay: rgba(15, 23, 42, 0.5); /* slate-900/50 */
+.theme-light {
+  /* Light Mode (Zinc tones) */
+  --bg-base: #f4f4f5; /* zinc-100 */
+  --bg-surface: rgba(255, 255, 255, 0.85); /* white/85 */
+  --bg-elevated: rgba(228, 228, 231, 0.7); /* zinc-200/70 */
+  --bg-overlay: rgba(255, 255, 255, 0.5); /* white/50 */
 
-  --text-primary: #f8fafc; /* slate-50 */
-  --text-secondary: #e2e8f0; /* slate-200 */
-  --text-muted: #94a3b8; /* slate-400 */
+  --text-primary: #09090b; /* zinc-950 */
+  --text-secondary: #27272a; /* zinc-800 */
+  --text-muted: #52525b; /* zinc-500 */
 
-  --border-subtle: rgba(51, 65, 85, 0.5); /* slate-700/50 */
-  --border-strong: rgba(51, 65, 85, 1); /* slate-700 */
+  --border-subtle: rgba(212, 212, 216, 0.6); /* zinc-300/60 */
+  --border-strong: rgba(161, 161, 170, 1); /* zinc-400 */
 
-  --accent: #818cf8; /* indigo-400 */
-  --accent-bg: rgba(99, 102, 241, 0.2); /* indigo-500/20 */
-  --accent-text: #818cf8; /* indigo-400 */
+  --accent: #18181b; /* zinc-900 */
+  --accent-bg: rgba(9, 9, 11, 1); /* zinc-950 */
+  --accent-text: #fafafa; /* zinc-50 */
 
-  /* Weather (Cinematic Night) */
-  --weather-safe: #0ea5e9; /* sky-500 */
-  --weather-safe-bg: rgba(14, 165, 233, 0.1);
-  --weather-warning: #fbbf24; /* amber-400 */
-  --weather-warning-bg: rgba(251, 191, 36, 0.1);
-  --weather-critical: #ec4899; /* pink-500 */
-  --weather-critical-bg: rgba(236, 72, 153, 0.1);
-  --weather-extreme: #c084fc; /* purple-400 */
-  --weather-extreme-bg: rgba(192, 132, 252, 0.1);
+  /* Weather (Light Background Adjusted) */
+  --weather-safe: #2563eb; /* blue-600 */
+  --weather-safe-bg: rgba(37, 99, 235, 0.1);
+  --weather-warning: #d97706; /* amber-600 */
+  --weather-warning-bg: rgba(217, 119, 6, 0.1);
+  --weather-critical: #c026d3; /* fuchsia-600 */
+  --weather-critical-bg: rgba(192, 38, 211, 0.1);
+  --weather-extreme: #9333ea; /* purple-600 */
+  --weather-extreme-bg: rgba(147, 51, 234, 0.1);
 }
 
 body {
@@ -101,17 +101,6 @@ body {
 #root {
   width: 100%;
   height: 100%;
-}
-
-/* Map Night Mode Overlay Effect */
-.map-night-overlay {
-  mix-blend-mode: overlay;
-  background: rgba(2, 6, 23, 0.4);
-  pointer-events: none;
-  z-index: 5;
-}
-.theme-night .maplibregl-canvas {
-  filter: brightness(0.9) sepia(0.2) hue-rotate(180deg) saturate(1.5);
 }
 
 /* Custom Scrollbar to match theme */
