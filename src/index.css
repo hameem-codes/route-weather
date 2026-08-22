@@ -86,131 +86,36 @@
 :root {
   /* Dashboard Tokens (Dark default) */
   --dash-bg: #0a0a0b;
-  --dash-surface: rgba(255, 255, 255, 0.05);
-  --dash-border: rgba(255, 255, 255, 0.05); /* Thinned border */
-  --dash-text: rgba(255, 255, 255, 0.9);
-  --dash-text-muted: rgba(255, 255, 255, 0.5);
-
-  /* Dark Mode (Zinc tones) */
-  --bg-base: #09090b; /* zinc-950 */
-  --bg-surface: rgba(24, 24, 27, 0.8); /* zinc-900/80 */
-  --bg-elevated: rgba(39, 39, 42, 0.8); /* zinc-800/80 */
-  --bg-overlay: rgba(24, 24, 27, 0.5); /* zinc-900/50 */
-
-  --text-primary: #fafafa; /* zinc-50 */
-  --text-secondary: #e4e4e7; /* zinc-200 */
-  --text-muted: #a1a1aa; /* zinc-400 */
-
-  --border-subtle: rgba(63, 63, 70, 0.5); /* zinc-700/50 */
-  --border-strong: rgba(63, 63, 70, 1); /* zinc-700 */
-
-  --accent: #e4e4e7; /* zinc-200 */
-  --accent-bg: rgba(255, 255, 255, 1); /* white */
-  --accent-text: #09090b; /* zinc-950 */
-
-  /* Weather (Base Dark) */
-  --weather-safe: #3b82f6; /* blue-500 */
-  --weather-safe-bg: rgba(59, 130, 246, 0.1);
-  --weather-warning: #f59e0b; /* amber-500 */
-  --weather-warning-bg: rgba(245, 158, 11, 0.1);
-  --weather-critical: #d946ef; /* fuchsia-500 */
-  --weather-critical-bg: rgba(217, 70, 239, 0.1);
-  --weather-extreme: #a855f7; /* purple-500 */
-  --weather-extreme-bg: rgba(168, 85, 247, 0.1);
-}
-
-.theme-light {
-  /* Light Mode (Zinc tones) */
-  --dash-bg: #f4f4f5;
-  --dash-surface: rgba(0, 0, 0, 0.03);
-  --dash-border: rgba(0, 0, 0, 0.05);
-  --dash-text: rgba(0, 0, 0, 0.9);
-  --dash-text-muted: rgba(0, 0, 0, 0.5);
-
-  --bg-base: #f4f4f5; /* zinc-100 */
-  --bg-surface: rgba(255, 255, 255, 0.85); /* white/85 */
-  --bg-elevated: rgba(228, 228, 231, 0.7); /* zinc-200/70 */
-  --bg-overlay: rgba(255, 255, 255, 0.5); /* white/50 */
-
-  --text-primary: #09090b; /* zinc-950 */
-  --text-secondary: #27272a; /* zinc-800 */
-  --text-muted: #52525b; /* zinc-500 */
-
-  --border-subtle: rgba(212, 212, 216, 0.6); /* zinc-300/60 */
-  --border-strong: rgba(161, 161, 170, 1); /* zinc-400 */
-
-  --accent: #18181b; /* zinc-900 */
-  --accent-bg: rgba(9, 9, 11, 1); /* zinc-950 */
-  --accent-text: #fafafa; /* zinc-50 */
-
-  /* Weather (Light Background Adjusted) */
-  --weather-safe: #2563eb; /* blue-600 */
-  --weather-safe-bg: rgba(37, 99, 235, 0.1);
-  --weather-warning: #d97706; /* amber-600 */
-  --weather-warning-bg: rgba(217, 119, 6, 0.1);
-  --weather-critical: #c026d3; /* fuchsia-600 */
-  --weather-critical-bg: rgba(192, 38, 211, 0.1);
-  --weather-extreme: #9333ea; /* purple-600 */
-  --weather-extreme-bg: rgba(225, 29, 72, 0.1);
-}
-
-.theme-night {
-  /* Night Mode (Deeper cinematic dark) */
-  --dash-bg: #000000;
-  --dash-surface: rgba(255, 255, 255, 0.02);
-  --dash-border: rgba(255, 255, 255, 0.04);
+  --dash-surface: rgba(255, 255, 255, 0.05); /* bg-white/5 */
+  --dash-border: rgba(255, 255, 255, 0.1); /* border-white/10 */
   --dash-text: rgba(255, 255, 255, 0.95);
-  --dash-text-muted: rgba(255, 255, 255, 0.45);
+  --dash-text-muted: rgba(255, 255, 255, 0.55);
 
-  --bg-base: #000000;
-  --bg-surface: rgba(10, 10, 10, 0.9);
-  --bg-elevated: rgba(20, 20, 20, 0.9);
-  --bg-overlay: rgba(0, 0, 0, 0.7);
+  --bg-base: #0a0a0b;
+  --bg-surface: rgba(255, 255, 255, 0.05);
+  --bg-elevated: rgba(255, 255, 255, 0.08);
+  --bg-overlay: rgba(10, 10, 12, 0.6);
 
   --text-primary: #ffffff;
-  --text-secondary: #e4e4e7;
-  --text-muted: #71717a;
+  --text-secondary: rgba(255, 255, 255, 0.7);
+  --text-muted: rgba(255, 255, 255, 0.45);
 
-  --border-subtle: rgba(39, 39, 42, 0.5);
-  --border-strong: rgba(63, 63, 70, 0.8);
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.15);
 
   --accent: #ffffff;
-  --accent-bg: rgba(255, 255, 255, 1);
-  --accent-text: #000000;
+  --accent-bg: #ffffff;
+  --accent-text: #0a0a0b;
 
-  /* Weather (Base Dark) */
-  --weather-safe: #3b82f6;
-  --weather-safe-bg: rgba(59, 130, 246, 0.1);
-  --weather-warning: #f59e0b;
-  --weather-warning-bg: rgba(245, 158, 11, 0.1);
-  --weather-critical: #d946ef;
-  --weather-critical-bg: rgba(217, 70, 239, 0.1);
-  --weather-extreme: #a855f7;
-  --weather-extreme-bg: rgba(168, 85, 247, 0.1);
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    /* Dashboard Tokens (Light mode) */
-    --dash-bg: #f4f4f5;
-    --dash-surface: rgba(0, 0, 0, 0.03);
-    --dash-border: rgba(0, 0, 0, 0.05);
-    --dash-text: rgba(0, 0, 0, 0.9);
-    --dash-text-muted: rgba(0, 0, 0, 0.5);
-
-    /* Light Mode (Zinc tones) */
-    --bg-base: #fafafa;
-    --bg-surface: rgba(255, 255, 255, 0.9);
-    --bg-elevated: rgba(244, 244, 245, 0.9);
-    --bg-overlay: rgba(255, 255, 255, 0.5);
-
-    --text-primary: #09090b;
-    --text-secondary: #3f3f46;
-    --text-muted: #71717a;
-
-    --border-subtle: rgba(228, 228, 231, 0.5);
-    --border-strong: rgba(212, 212, 216, 1);
-  }
+  /* Weather: Standard monochrome/minimal status signals */
+  --weather-safe: #10b981; /* green used strictly for safe/online */
+  --weather-safe-bg: rgba(16, 185, 129, 0.1);
+  --weather-warning: #ef4444; /* red/amber used strictly for hazards/offline */
+  --weather-warning-bg: rgba(239, 68, 68, 0.1);
+  --weather-critical: #ef4444;
+  --weather-critical-bg: rgba(239, 68, 68, 0.1);
+  --weather-extreme: #ef4444;
+  --weather-extreme-bg: rgba(239, 68, 68, 0.1);
 }
 
 body {

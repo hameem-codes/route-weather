@@ -3,7 +3,6 @@ import {
   MapPin,
   Flag,
   Sun,
-  Moon,
   Cloud,
   CloudRain,
   CloudLightning,
@@ -27,8 +26,7 @@ import {
   Truck,
   ClockCounterClockwise as HistoryIcon,
   Brain,
-  Info,
-  MoonStars
+  Info
 } from '@phosphor-icons/react';
 import * as maplibregl from 'maplibre-gl';
 import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
@@ -44,6 +42,60 @@ import { toPng } from 'html-to-image';
 maplibregl.setWorkerUrl(mapLibreWorkerUrl);
 
 import 'maplibre-gl/dist/maplibre-gl.css';
+
+const getHybridMapStyle = () => ({
+  version: 8,
+  sources: {
+    'esri-satellite': {
+      type: 'raster',
+      tiles: [
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+      ],
+      tileSize: 256,
+      attribution: '&copy; Esri, Maxar'
+    },
+    'esri-roads': {
+      type: 'raster',
+      tiles: [
+        'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}'
+      ],
+      tileSize: 256
+    },
+    'esri-labels': {
+      type: 'raster',
+      tiles: [
+        'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'
+      ],
+      tileSize: 256
+    }
+  },
+  layers: [
+    {
+      id: 'satellite-layer',
+      type: 'raster',
+      source: 'esri-satellite',
+      minzoom: 0,
+      maxzoom: 22
+    },
+    {
+      id: 'roads-layer',
+      type: 'raster',
+      source: 'esri-roads',
+      minzoom: 0,
+      maxzoom: 22,
+      paint: {
+        'raster-opacity': 0.8
+      }
+    },
+    {
+      id: 'labels-layer',
+      type: 'raster',
+      source: 'esri-labels',
+      minzoom: 0,
+      maxzoom: 22
+    }
+  ]
+});
 
 const IconMap: Record<string, any> = {
   "Sun": Sun,
@@ -133,34 +185,13 @@ function getSlicedCoordinates(coords: number[][], dists: number[], startDist: nu
   return result;
 }
 
-// Get the visual color for a segment based on its weather conditions
-const getSegmentColor = (seg: any) => {
-  const severity = seg.weather?.severity;
-  const condition = seg.weather?.condition || '';
-  
-  if (severity === 'critical') {
-    if (condition.includes('Snow') || condition.includes('Ice')) return '#a855f7'; // Purple for snow/ice
-    return '#ef4444'; // Red for storms/extreme
-  }
-  if (severity === 'warning') {
-    return '#f59e0b'; // Amber for rain/fog
-  }
-  if (condition.includes('Cloud') || condition.includes('Overcast')) {
-    return '#64748b'; // Muted slate-gray for cloudy
-  }
-  return '#3b82f6'; // Blue for optimal/clear
-};
-
 function App() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapRef>(null);
   const accumulatedBearingRef = useRef<number>(NaN);
   
   // Theme and UI States
-  const [theme, setTheme] = useState<'light' | 'dark' | 'night'>(() => {
-    const saved = localStorage.getItem('theme');
-    return (saved as 'light' | 'dark' | 'night') || 'dark';
-  });
+  const theme = 'dark';
   const [activeTab, setActiveTab] = useState<'route-weather' | 'fleet' | 'history' | 'ai-insights'>('route-weather');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [detailedCheckpoint, setDetailedCheckpoint] = useState<any | null>(null);
@@ -571,37 +602,38 @@ function App() {
   // Render Functions for Tab Contents
   const renderRouteWeatherTab = () => {
     return (
-      <div className="flex flex-col gap-4 h-full">
-        {/* Input Controls */}
-        <div className="flex flex-col gap-2 bg-white/[0.02] p-4 rounded-xl border border-white/5">
-          <div className="flex items-center gap-3 bg-[var(--color-dash-surface-hover)] rounded-lg px-3 py-2 border border-white/5 focus-within:border-[var(--color-dash-border)] transition-colors">
-            <MapPin size={18} className="text-[var(--color-dash-text-muted)]" />
+      <>
+        {/* Card 1: Route Inputs */}
+        <div className="dash-glass p-4 pointer-events-auto bg-zinc-950/85 border border-white/10 shadow-2xl rounded-2xl flex flex-col gap-3">
+          <h3 className="text-dash-label font-bold mb-1">Route Search</h3>
+          <div className="flex items-center gap-3 bg-white/5 rounded-xl px-3 py-2 border border-white/5 focus-within:border-white/20 transition-colors">
+            <MapPin size={16} className="text-white/40" />
             <input 
               type="text" 
               value={originInput}
               onChange={e => setOriginInput(e.target.value)}
-              className="bg-transparent border-none outline-none text-xs w-full text-[var(--color-dash-text)] placeholder-white/30" 
+              className="bg-transparent border-none outline-none text-xs w-full text-white placeholder-white/20" 
               placeholder="Origin location..."
             />
           </div>
           
-          <div className="flex items-center gap-3 bg-[var(--color-dash-surface-hover)] rounded-lg px-3 py-2 border border-white/5 focus-within:border-[var(--color-dash-border)] transition-colors">
-            <Flag size={18} className="text-[var(--color-dash-text-muted)]" />
+          <div className="flex items-center gap-3 bg-white/5 rounded-xl px-3 py-2 border border-white/5 focus-within:border-white/20 transition-colors">
+            <Flag size={16} className="text-white/40" />
             <input 
               type="text" 
               value={destInput}
               onChange={e => setDestInput(e.target.value)}
-              className="bg-transparent border-none outline-none text-xs w-full text-[var(--color-dash-text)] placeholder-white/30" 
+              className="bg-transparent border-none outline-none text-xs w-full text-white placeholder-white/20" 
               placeholder="Destination..."
             />
           </div>
 
-          <div className="flex items-center gap-3 bg-[var(--color-dash-surface-hover)] rounded-lg px-3 py-2 border border-white/5 focus-within:border-[var(--color-dash-border)] transition-colors">
-            <Clock size={18} className="text-[var(--color-dash-text-muted)]" />
+          <div className="flex items-center gap-3 bg-white/5 rounded-xl px-3 py-2 border border-white/5 focus-within:border-white/20 transition-colors">
+            <Clock size={16} className="text-white/40" />
             <select 
               value={departureOffset} 
               onChange={e => setDepartureOffset(Number(e.target.value))}
-              className="bg-transparent border-none outline-none text-xs w-full text-[var(--color-dash-text)] cursor-pointer"
+              className="bg-transparent border-none outline-none text-xs w-full text-white cursor-pointer"
             >
               <option value={0} className="bg-zinc-950 text-white">Leave Now</option>
               <option value={1} className="bg-zinc-950 text-white">In 1 Hour</option>
@@ -615,274 +647,305 @@ function App() {
           <button 
             onClick={() => calculateRoute()}
             disabled={isLoading || routeState === 'animating'}
-            className="w-full bg-[var(--color-dash-text)] text-[var(--color-dash-bg)] font-bold py-2 px-4 rounded-lg text-xs hover:opacity-90 transition-all duration-150 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-2 cursor-pointer"
+            className="w-full bg-white text-zinc-950 font-bold py-2 px-4 rounded-xl text-xs hover:bg-white/90 transition-all duration-150 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-1 cursor-pointer"
           >
             {isLoading ? (
               <>
                 <SpinnerGap size={14} className="animate-spin" />
-                Calculating Route...
+                Calculating...
               </>
             ) : routeState === 'animating' ? 'Plotting Route...' : 'Generate Route'}
           </button>
         </div>
 
-        {/* Route Metrics Summary */}
-        {routeData && (
-          <div className="bg-white/[0.02] p-4 rounded-xl border border-white/5 flex flex-col gap-3">
-            <h3 className="text-dash-label">Journey Metrics</h3>
-            <div className="grid grid-cols-3 gap-2 text-center">
-              <div className="bg-white/[0.01] border border-white/5 p-2 rounded-lg">
-                <div className="text-[10px] text-[var(--color-dash-text-muted)] font-semibold uppercase tracking-wider">Distance</div>
-                <div className="text-sm font-bold text-[var(--color-dash-text)] font-mono mt-1">{Math.round(routeData.totalDistanceMi)} mi</div>
+        {routeData ? (
+          <>
+            {/* Card 2: Slim Status Row */}
+            <div className="dash-glass px-4 py-3 pointer-events-auto bg-zinc-950/85 border border-white/10 shadow-2xl rounded-2xl flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#10b981]" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">Optimal Stops</span>
+                <span className="text-xs font-mono font-bold text-white">{routeData.segments.filter(s => s.weather.severity === 'safe').length}</span>
               </div>
-              <div className="bg-white/[0.01] border border-white/5 p-2 rounded-lg">
-                <div className="text-[10px] text-[var(--color-dash-text-muted)] font-semibold uppercase tracking-wider">ETA</div>
-                <div className="text-sm font-bold text-[var(--color-dash-text)] font-mono mt-1">{Math.floor(routeData.totalTimeMins / 60)}h {routeData.totalTimeMins % 60}m</div>
-              </div>
-              <div className="bg-white/[0.01] border border-white/5 p-2 rounded-lg">
-                <div className="text-[10px] text-[var(--color-dash-text-muted)] font-semibold uppercase tracking-wider">Safety Rating</div>
-                <div className={`text-sm font-bold font-mono mt-1 ${routeData.overallRisk > 80 ? 'text-[var(--weather-safe)]' : routeData.overallRisk > 50 ? 'text-[var(--weather-warning)]' : 'text-[var(--weather-critical)]'}`}>
-                  {routeData.overallRisk}/100
-                </div>
+              <div className="h-4 w-px bg-white/10" />
+              <div className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#ef4444]" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">Risk Stops</span>
+                <span className="text-xs font-mono font-bold text-white">{routeData.segments.filter(s => s.weather.severity !== 'safe').length}</span>
               </div>
             </div>
-          </div>
-        )}
 
-        {/* Checkpoint Timeline */}
-        {routeData ? (
-          <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-2 min-h-0">
-            <h3 className="text-dash-label mb-1">Weather Checkpoints</h3>
-            {routeData.segments.map((seg) => {
-              const Icon = IconMap[seg.weather.icon] || Sun;
-              const isSafe = seg.weather.severity === 'safe';
-              const isWarning = seg.weather.severity === 'warning';
-              
-              const currentDist = progress * routeData.totalDistanceMi;
-              const isReached = routeState === 'visible' || currentDist >= seg.distanceFromStartMi;
-              const progressPercent = Math.min(100, Math.max(0, (currentDist / seg.distanceFromStartMi) * 100));
+            {/* Card 3: Hero Metric */}
+            <div className="dash-glass p-4 pointer-events-auto bg-zinc-950/85 border border-white/10 shadow-2xl rounded-2xl flex flex-col shrink-0">
+              <h3 className="text-dash-label font-bold">Route Safety Index</h3>
+              <div className="flex items-baseline gap-1 mt-1">
+                <span className="text-3xl font-light text-white">{100 - routeData.overallRisk}</span>
+                <span className="text-[10px] text-white/40 font-mono">/ 100</span>
+              </div>
 
-              return (
-                <div 
-                  key={seg.id}
-                  onClick={() => setDetailedCheckpoint(seg)}
-                  className={`bg-white/[0.02] border border-white/5 p-3 rounded-xl transition-all duration-300 cursor-pointer hover:bg-[var(--color-dash-surface-hover)] flex flex-col gap-2 ${isReached ? 'opacity-100' : 'opacity-40'}`}
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="flex items-center gap-2.5">
-                      <div className={`p-1.5 rounded-lg ${isSafe ? 'text-[var(--weather-safe)] bg-[var(--weather-safe-bg)]' : isWarning ? 'text-[var(--weather-warning)] bg-[var(--weather-warning-bg)]' : 'text-[var(--weather-critical)] bg-[var(--weather-critical-bg)]'}`}>
-                        <Icon size={14} weight="duotone" />
-                      </div>
-                      <div>
-                        <h4 className="text-[11px] font-bold text-[var(--color-dash-text)] truncate max-w-[190px]">{seg.locationName}</h4>
-                        <div className="text-[9px] text-[var(--color-dash-text-muted)] font-mono mt-0.5">
-                          {seg.timeFromStartMins === 0 ? 'Departure' : `+${seg.timeFromStartMins}m (${Math.round(seg.distanceFromStartMi)} mi)`}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right flex flex-col items-end">
-                      <div className="text-sm font-bold text-[var(--color-dash-text)] font-mono">{UNIT_CONFIG.formatTemp(seg.weather.temperatureC)}</div>
-                      <div className="text-[9px] text-[var(--color-dash-text-muted)] font-semibold uppercase tracking-wider mt-0.5">{seg.weather.condition}</div>
+              {/* Live Sparkline representing Temperature Profile */}
+              {(() => {
+                const temps = routeData.segments.map(s => s.weather.temperatureC);
+                const minTemp = Math.min(...temps);
+                const maxTemp = Math.max(...temps);
+                const tempRange = maxTemp - minTemp || 1;
+                const points = routeData.segments.map((s, idx) => {
+                  const x = (idx / (routeData.segments.length - 1)) * 100;
+                  const y = 30 - ((s.weather.temperatureC - minTemp) / tempRange) * 20 - 5;
+                  return `${x},${y}`;
+                }).join(' ');
+
+                return (
+                  <div className="relative mt-4">
+                    <svg className="w-full h-12 overflow-visible" viewBox="0 0 100 30" preserveAspectRatio="none">
+                      <path 
+                        d={`M ${points}`} 
+                        fill="none" 
+                        stroke="#ffffff" 
+                        strokeWidth="1.5" 
+                        className="animate-draw"
+                      />
+                    </svg>
+                    <div className="flex justify-between text-[8px] text-white/30 font-mono mt-1 select-none">
+                      <span>{UNIT_CONFIG.formatTemp(minTemp)}</span>
+                      <span className="uppercase tracking-wider">Temp Profile</span>
+                      <span>{UNIT_CONFIG.formatTemp(maxTemp)}</span>
                     </div>
                   </div>
+                );
+              })()}
+            </div>
 
-                  {seg.alert && (
-                    <div className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-md self-start border
-                      ${isWarning 
-                        ? 'bg-[var(--weather-warning-bg)] border-[var(--weather-warning)]/20 text-[var(--weather-warning)]' 
-                        : 'bg-[var(--weather-critical-bg)] border-[var(--weather-critical)]/20 text-[var(--weather-critical)]'}`}>
-                      Alert: {seg.alert}
-                    </div>
-                  )}
-
-                  {/* Progress bar representing travel position */}
-                  <div className="w-full h-[2px] bg-white/5 rounded-full overflow-hidden relative">
+            {/* Card 4: Weather Stops List */}
+            <div className="dash-glass p-4 pointer-events-auto bg-zinc-950/85 border border-white/10 shadow-2xl rounded-2xl flex-1 flex flex-col min-h-0 overflow-hidden">
+              <h3 className="text-dash-label font-bold mb-3">Weather Checkpoints</h3>
+              <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-2">
+                {routeData.segments.map((seg, idx) => {
+                  const Icon = IconMap[seg.weather.icon] || Sun;
+                  const isSafe = seg.weather.severity === 'safe';
+                  const currentDist = progress * routeData.totalDistanceMi;
+                  const isCurrent = currentDist >= seg.distanceFromStartMi;
+                  
+                  return (
                     <div 
-                      className="absolute top-0 left-0 h-full bg-white/40 transition-all duration-300"
-                      style={{ width: `${progressPercent}%` }}
-                    ></div>
+                      key={seg.id}
+                      onClick={() => setDetailedCheckpoint(seg)}
+                      className="bg-white/[0.02] border border-white/5 hover:bg-white/[0.06] hover:border-white/10 p-3 rounded-xl transition-all duration-150 cursor-pointer flex flex-col gap-2"
+                    >
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="flex items-center gap-2.5">
+                          <div className={`p-1.5 rounded-lg bg-white/5 text-white ${!isSafe ? 'text-[#ef4444]' : 'text-white'}`}>
+                            <Icon size={14} weight="duotone" />
+                          </div>
+                          <div>
+                            <h4 className="text-[11px] font-bold text-white truncate max-w-[160px]">{seg.locationName.split('(')[0]}</h4>
+                            <div className="text-[8px] text-white/40 font-mono mt-0.5">
+                              {seg.timeFromStartMins === 0 ? 'Departure' : `+${seg.timeFromStartMins}m`} • ETA {new Date(seg.eta).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right flex flex-col items-end shrink-0">
+                          <span className="text-[11px] font-bold text-white font-mono">{UNIT_CONFIG.formatTemp(seg.weather.temperatureC)}</span>
+                          <span className={`text-[8px] font-bold uppercase tracking-wider mt-0.5 
+                            ${isSafe ? 'text-[#10b981]' : 'text-[#ef4444]'}`}>
+                            {seg.weather.condition.split(' ')[0]}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Thin Progress bar */}
+                      <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-white transition-all duration-300"
+                          style={{ 
+                            width: `${isCurrent ? 100 : (idx > 0 && currentDist > routeData.segments[idx - 1].distanceFromStartMi) ? Math.round(((currentDist - routeData.segments[idx-1].distanceFromStartMi) / (seg.distanceFromStartMi - routeData.segments[idx-1].distanceFromStartMi)) * 100) : 0}%` 
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="dash-glass p-6 pointer-events-auto bg-zinc-950/85 border border-white/10 shadow-2xl rounded-2xl flex-1 flex flex-col items-center justify-center text-center text-white/40 gap-2">
+            <MapPin size={24} className="opacity-50" />
+            <p className="text-xs max-w-[220px] leading-relaxed">Enter locations and trigger route mapping to obtain weather intelligence along your path.</p>
+          </div>
+        )}
+      </>
+    );
+  };
+
+  const renderFleetTab = () => {
+    const onlineVehicles = fleet.filter(v => v.risk === 'safe').length;
+    const offlineVehicles = fleet.filter(v => v.risk !== 'safe').length;
+
+    return (
+      <>
+        {/* Card 1: Slim Status Overview */}
+        <div className="dash-glass px-4 py-3 pointer-events-auto bg-zinc-950/85 border border-white/10 shadow-2xl rounded-2xl flex justify-between items-center shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#10b981]" />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">Online</span>
+            <span className="text-xs font-mono font-bold text-white">{onlineVehicles}</span>
+          </div>
+          <div className="h-4 w-px bg-white/10" />
+          <div className="flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#ef4444]" />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">Offline / Risk</span>
+            <span className="text-xs font-mono font-bold text-white">{offlineVehicles}</span>
+          </div>
+        </div>
+
+        {/* Card 2: Fleet Scrollable List */}
+        <div className="dash-glass p-4 pointer-events-auto bg-zinc-950/85 border border-white/10 shadow-2xl rounded-2xl flex-1 flex flex-col min-h-0 overflow-hidden">
+          <h3 className="text-dash-label font-bold mb-3">Active Logistics</h3>
+          <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-3">
+            {fleet.map((vehicle) => {
+              const isSafe = vehicle.risk === 'safe';
+              return (
+                <div 
+                  key={vehicle.id}
+                  onClick={() => {
+                    if (vehicle.status === 'En Route') {
+                      setOriginInput(vehicle.origin);
+                      setDestInput(vehicle.dest);
+                      calculateRoute(vehicle.origin, vehicle.dest);
+                      setActiveTab('route-weather');
+                    }
+                  }}
+                  className="bg-white/[0.02] border border-white/5 hover:bg-white/[0.06] hover:border-white/10 p-3 rounded-xl transition-all duration-150 cursor-pointer flex flex-col gap-2"
+                >
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <Truck size={14} className="opacity-80" />
+                        {vehicle.name}
+                      </h4>
+                      <span className="text-[9px] text-white/40 mt-0.5 block">Driver: {vehicle.driver}</span>
+                    </div>
+                    <span className={`text-[8px] uppercase font-bold px-2 py-0.5 rounded-full border
+                      ${isSafe 
+                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' 
+                        : 'bg-rose-500/10 border-rose-500/20 text-rose-400'}`}>
+                      {vehicle.status}
+                    </span>
+                  </div>
+
+                  <div className="text-[10px] font-semibold text-white/60 flex items-center gap-1">
+                    <span>{vehicle.origin.split(',')[0]}</span>
+                    <span className="opacity-30">→</span>
+                    <span>{vehicle.dest.split(',')[0]}</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/5 text-[9px] text-white/50">
+                    <div>
+                      <span className="block text-[7px] uppercase tracking-wider text-white/30">Weather</span>
+                      <span className="text-white flex items-center gap-1 mt-0.5">
+                        {vehicle.weather === 'Clear' ? <Sun size={10} /> : <CloudRain size={10} />}
+                        {vehicle.weather}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="block text-[7px] uppercase tracking-wider text-white/30">ETA</span>
+                      <span className="text-white mt-0.5 block">{vehicle.eta} ({vehicle.distanceRemaining} mi)</span>
+                    </div>
                   </div>
                 </div>
               );
             })}
           </div>
-        ) : (
-          <div className="flex-1 border border-white/5 border-dashed rounded-2xl flex flex-col items-center justify-center p-6 text-center text-[var(--color-dash-text-muted)] my-auto gap-2">
-            <MapPin size={24} className="opacity-50" />
-            <p className="text-xs max-w-xs font-medium">Enter locations and trigger route mapping to obtain weather intelligence along your path.</p>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const renderFleetTab = () => {
-    return (
-      <div className="flex flex-col gap-4 h-full">
-        <h3 className="text-dash-label mb-1">Fleet Operations</h3>
-        <div className="flex flex-col gap-3 overflow-y-auto no-scrollbar flex-1 pb-4">
-          {fleet.map((vehicle) => {
-            const isSafe = vehicle.risk === 'safe';
-            const isWarning = vehicle.risk === 'warning';
-            
-            return (
-              <div 
-                key={vehicle.id}
-                onClick={() => {
-                  if (vehicle.status === 'En Route') {
-                    setOriginInput(vehicle.origin);
-                    setDestInput(vehicle.dest);
-                    calculateRoute(vehicle.origin, vehicle.dest);
-                    setActiveTab('route-weather');
-                  }
-                }}
-                className="bg-white/[0.02] border border-white/5 hover:bg-[var(--color-dash-surface-hover)] p-4 rounded-xl transition-all duration-150 cursor-pointer flex flex-col gap-3"
-              >
-                {/* Header */}
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h4 className="text-xs font-bold text-[var(--color-dash-text)] flex items-center gap-1.5">
-                      <Truck size={15} />
-                      {vehicle.name}
-                    </h4>
-                    <span className="text-[10px] text-[var(--color-dash-text-muted)]">Driver: {vehicle.driver}</span>
-                  </div>
-                  <span className={`text-[9px] uppercase font-bold px-2 py-0.5 rounded-full border
-                    ${vehicle.status === 'En Route' 
-                      ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' 
-                      : 'bg-zinc-500/10 border-zinc-500/20 text-zinc-400'}`}>
-                    {vehicle.status}
-                  </span>
-                </div>
-
-                {/* Route detail */}
-                <div className="text-[11px] font-semibold text-[var(--color-dash-text-muted)] flex items-center gap-1">
-                  <span>{vehicle.origin.split(',')[0]}</span>
-                  <span className="opacity-50">→</span>
-                  <span>{vehicle.dest.split(',')[0]}</span>
-                </div>
-
-                {/* Grid info */}
-                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-white/5 text-[10px] text-[var(--color-dash-text-muted)] font-medium">
-                  <div>
-                    <span className="block text-[8px] uppercase tracking-wider text-[var(--color-dash-text-muted)]/60 mb-0.5">Weather Condition</span>
-                    <span className="text-[var(--color-dash-text)] flex items-center gap-1">
-                      {vehicle.weather === 'Clear' ? <Sun size={12} /> : vehicle.weather === 'Rain' ? <CloudRain size={12} /> : <Snowflake size={12} />}
-                      {vehicle.weather}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="block text-[8px] uppercase tracking-wider text-[var(--color-dash-text-muted)]/60 mb-0.5">Route Severity</span>
-                    <span className={`font-bold flex items-center gap-1 ${isSafe ? 'text-[var(--weather-safe)]' : isWarning ? 'text-[var(--weather-warning)]' : 'text-[var(--weather-critical)]'}`}>
-                      <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
-                      {vehicle.risk.toUpperCase()}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="block text-[8px] uppercase tracking-wider text-[var(--color-dash-text-muted)]/60 mb-0.5">ETA</span>
-                    <span className="text-[var(--color-dash-text)]">{vehicle.eta}</span>
-                  </div>
-                  <div>
-                    <span className="block text-[8px] uppercase tracking-wider text-[var(--color-dash-text-muted)]/60 mb-0.5">Remaining Dist</span>
-                    <span className="text-[var(--color-dash-text)]">{vehicle.distanceRemaining} mi</span>
-                  </div>
-                </div>
-
-                {vehicle.status === 'En Route' && (
-                  <div className="mt-2 text-center py-1.5 bg-white/5 rounded-lg text-[9px] font-bold text-[var(--color-dash-text)] uppercase tracking-wider hover:bg-white/10 transition-colors">
-                    Simulate Journey on Map
-                  </div>
-                )}
-              </div>
-            );
-          })}
         </div>
-      </div>
+      </>
     );
   };
 
   const renderHistoryTab = () => {
     return (
-      <div className="flex flex-col gap-4 h-full">
-        <div className="flex justify-between items-center shrink-0">
-          <h3 className="text-dash-label">Search History</h3>
+      <>
+        {/* Card 1: History Header */}
+        <div className="dash-glass p-4 pointer-events-auto bg-zinc-950/85 border border-white/10 shadow-2xl rounded-2xl flex justify-between items-center shrink-0">
+          <h3 className="text-dash-label font-bold">Search History</h3>
           {history.length > 0 && (
             <button 
               onClick={clearHistory}
-              className="text-[9px] uppercase tracking-wider font-extrabold text-rose-500/80 hover:text-rose-500 hover:bg-rose-500/10 px-2 py-1 rounded-md transition-all cursor-pointer"
+              className="text-[9px] uppercase tracking-wider font-extrabold text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 px-2 py-1 rounded-lg transition-all cursor-pointer border border-rose-500/10"
             >
               Clear All
             </button>
           )}
         </div>
 
-        <div className="flex flex-col gap-2.5 overflow-y-auto no-scrollbar flex-1 pb-4">
-          {history.length > 0 ? (
-            history.map((item) => {
-              return (
-                <div 
-                  key={item.id}
-                  onClick={() => {
-                    setOriginInput(item.origin);
-                    setDestInput(item.dest);
-                    calculateRoute(item.origin, item.dest);
-                    setActiveTab('route-weather');
-                  }}
-                  className="bg-white/[0.02] border border-white/5 hover:bg-[var(--color-dash-surface-hover)] p-3 rounded-xl transition-all duration-150 cursor-pointer flex flex-col gap-1.5 relative group"
-                >
-                  <div className="pr-8">
-                    <div className="text-xs font-bold text-[var(--color-dash-text)] flex items-center gap-1.5 truncate">
-                      <span>{item.origin.split(',')[0]}</span>
-                      <span className="opacity-40">→</span>
-                      <span>{item.dest.split(',')[0]}</span>
-                    </div>
-                    <span className="text-[9px] text-[var(--color-dash-text-muted)] font-mono">{item.timestamp}</span>
-                  </div>
-
-                  <div className="flex gap-4 text-[10px] text-[var(--color-dash-text-muted)] font-medium pt-1.5 border-t border-white/5">
-                    <span>{item.distance} mi</span>
-                    <span className="opacity-30">|</span>
-                    <span>{item.duration}</span>
-                    <span className="opacity-30">|</span>
-                    <span>{item.weatherSummary}</span>
-                    <span className="opacity-30">|</span>
-                    <span className={item.risk > 80 ? 'text-[var(--weather-safe)]' : item.risk > 50 ? 'text-[var(--weather-warning)]' : 'text-[var(--weather-critical)]'}>
-                      {item.risk}/100
-                    </span>
-                  </div>
-
-                  <button 
-                    onClick={(e) => deleteHistoryItem(item.id, e)}
-                    className="absolute top-3 right-3 p-1.5 text-[var(--color-dash-text-muted)] hover:text-rose-500 hover:bg-rose-500/10 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                    title="Delete Record"
+        {/* Card 2: Scrollable History Card */}
+        <div className="dash-glass p-4 pointer-events-auto bg-zinc-950/85 border border-white/10 shadow-2xl rounded-2xl flex-1 flex flex-col min-h-0 overflow-hidden">
+          <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-2.5">
+            {history.length > 0 ? (
+              history.map((item) => {
+                const isSafe = item.risk < 40;
+                return (
+                  <div 
+                    key={item.id}
+                    onClick={() => {
+                      setOriginInput(item.origin);
+                      setDestInput(item.dest);
+                      calculateRoute(item.origin, item.dest);
+                      setActiveTab('route-weather');
+                    }}
+                    className="bg-white/[0.02] border border-white/5 hover:bg-white/[0.06] hover:border-white/10 p-3 rounded-xl transition-all duration-150 cursor-pointer flex flex-col gap-2 relative group"
                   >
-                    <Trash size={14} />
-                  </button>
-                </div>
-              );
-            })
-          ) : (
-            <div className="border border-white/5 border-dashed rounded-xl flex flex-col items-center justify-center p-6 text-center text-[var(--color-dash-text-muted)] my-auto gap-1">
-              <HistoryIcon size={20} className="opacity-50" />
-              <p className="text-xs font-semibold">No recent searches</p>
-            </div>
-          )}
+                    <div className="pr-8">
+                      <div className="text-xs font-bold text-white flex items-center gap-1.5 truncate">
+                        <span>{item.origin.split(',')[0]}</span>
+                        <span className="opacity-30">→</span>
+                        <span>{item.dest.split(',')[0]}</span>
+                      </div>
+                      <span className="text-[8px] text-white/40 font-mono mt-0.5 block">{item.timestamp}</span>
+                    </div>
+
+                    <div className="flex gap-3 text-[9px] text-white/50 font-mono pt-2 border-t border-white/5">
+                      <span>{item.distance} mi</span>
+                      <span className="opacity-20">|</span>
+                      <span>{item.duration}</span>
+                      <span className="opacity-20">|</span>
+                      <span className={`font-bold ${isSafe ? 'text-[#10b981]' : 'text-[#ef4444]'}`}>
+                        Score: {100 - item.risk}
+                      </span>
+                    </div>
+
+                    <button 
+                      onClick={(e) => deleteHistoryItem(item.id, e)}
+                      className="absolute top-2.5 right-2.5 p-1 text-white/40 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                      title="Delete Record"
+                    >
+                      <Trash size={12} />
+                    </button>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="flex flex-col items-center justify-center text-center text-white/40 h-full gap-1.5 py-6">
+                <HistoryIcon size={20} className="opacity-50" />
+                <p className="text-xs font-semibold">No recent searches</p>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      </>
     );
   };
 
   const renderAIInsightsTab = () => {
     if (!routeData) {
       return (
-        <div className="border border-white/5 border-dashed rounded-xl flex flex-col items-center justify-center p-6 text-center text-[var(--color-dash-text-muted)] my-auto gap-2">
+        <div className="dash-glass p-6 pointer-events-auto bg-zinc-950/85 border border-white/10 shadow-2xl rounded-2xl flex-1 flex flex-col items-center justify-center text-center text-white/40 gap-2">
           <Brain size={24} className="opacity-50" />
-          <p className="text-xs max-w-xs font-medium">Generate a route to obtain meteorological risk assessments and smart travel recommendations.</p>
+          <p className="text-xs max-w-[220px] leading-relaxed">Generate a route to obtain meteorological risk assessments and smart travel recommendations.</p>
         </div>
       );
     }
 
-    // Deterministic intelligence analysis on forecast details
     const totalCheckpoints = routeData.segments.length;
     const criticalPoints = routeData.segments.filter(s => s.weather.severity === 'critical');
     const warningPoints = routeData.segments.filter(s => s.weather.severity === 'warning');
@@ -943,43 +1006,66 @@ function App() {
     }
 
     return (
-      <div className="flex flex-col gap-4 h-full">
-        <div className="bg-white/[0.02] border border-white/5 p-4 rounded-xl">
+      <>
+        {/* Card 1: Route Analysis */}
+        <div className="dash-glass p-4 pointer-events-auto bg-zinc-950/85 border border-white/10 shadow-2xl rounded-2xl flex flex-col shrink-0">
           <h3 className="text-dash-label mb-2">Route Analysis</h3>
-          <p className="text-xs leading-relaxed text-[var(--color-dash-text)] font-medium">
-            Your trip from {routeData.originName.split(',')[0]} to {routeData.destName.split(',')[0]} spans {Math.round(routeData.totalDistanceMi)} miles and passes through {totalCheckpoints} weather checkpoints.{summaryText}
+          <p className="text-xs leading-relaxed text-white font-medium">
+            Your trip spans {Math.round(routeData.totalDistanceMi)} miles and passes through {totalCheckpoints} weather checkpoints.{summaryText}
           </p>
         </div>
 
-        {/* Future Travel Forecast Vertical Timeline */}
-        <div className="bg-white/[0.02] border border-white/5 p-4 rounded-xl flex flex-col">
+        {/* Card 2: AI Weather Alerts */}
+        {warnings.length > 0 && (
+          <div className="dash-glass p-4 pointer-events-auto bg-zinc-950/85 border border-white/10 shadow-2xl rounded-2xl flex flex-col gap-2.5 shrink-0">
+            <h3 className="text-dash-label">Hazards & Action Plan</h3>
+            <div className="flex flex-col gap-2 max-h-36 overflow-y-auto no-scrollbar">
+              {warnings.map((warn, i) => (
+                <div 
+                  key={i} 
+                  className={`p-2.5 border rounded-xl flex gap-2 
+                    ${warn.type === 'critical' 
+                      ? 'bg-rose-500/10 border-rose-500/20 text-rose-300' 
+                      : 'bg-amber-500/10 border-amber-500/20 text-amber-300'}`}
+                >
+                  <Warning size={14} className="shrink-0 mt-0.5" />
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-bold uppercase tracking-wider">{warn.title}</span>
+                    <p className="text-[9px] leading-relaxed opacity-90 mt-0.5">{warn.text}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Card 3: Timeline Forecast */}
+        <div className="dash-glass p-4 pointer-events-auto bg-zinc-950/85 border border-white/10 shadow-2xl rounded-2xl flex-1 flex flex-col min-h-0 overflow-hidden">
           <h3 className="text-dash-label mb-3">Future Travel Forecast</h3>
-          <div className="flex flex-col relative pl-6 border-l border-white/10 ml-2 gap-5 py-2">
+          <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col relative pl-5 border-l border-white/10 ml-2 gap-4 py-2">
             {routeData.segments.map((seg, index) => {
               const Icon = IconMap[seg.weather.icon] || Sun;
               const formattedTime = new Date(seg.eta).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              const isSafe = seg.weather.severity === 'safe';
               
               return (
                 <div key={seg.id} className="relative flex flex-col">
                   {/* Timeline Dot */}
-                  <div className="absolute -left-[30px] top-1.5 w-3 h-3 rounded-full bg-white border border-zinc-955 flex items-center justify-center">
-                    <div className={`w-1.5 h-1.5 rounded-full ${
-                      seg.weather.severity === 'safe' ? 'bg-[var(--weather-safe)]' :
-                      seg.weather.severity === 'warning' ? 'bg-[var(--weather-warning)]' : 'bg-[var(--weather-critical)]'
-                    }`}></div>
+                  <div className="absolute -left-[26px] top-1.5 w-2.5 h-2.5 rounded-full bg-zinc-950 border border-white/20 flex items-center justify-center">
+                    <div className={`w-1.5 h-1.5 rounded-full ${isSafe ? 'bg-[#10b981]' : 'bg-[#ef4444]'}`} />
                   </div>
                   
                   {/* Content */}
                   <div className="flex justify-between items-start gap-2">
                     <div>
-                      <h4 className="text-[11px] font-bold text-[var(--color-dash-text)] leading-tight">{seg.locationName}</h4>
-                      <span className="text-[9px] text-[var(--color-dash-text-muted)] mt-1 block font-mono">
+                      <h4 className="text-[11px] font-bold text-white leading-tight">{seg.locationName.split('(')[0]}</h4>
+                      <span className="text-[8px] text-white/40 mt-0.5 block font-mono">
                         {index === 0 ? 'Departure' : `+${seg.timeFromStartMins}m`} • ETA {formattedTime}
                       </span>
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <Icon size={12} weight="duotone" className="text-[var(--color-dash-text-muted)]" />
-                      <span className="text-[10px] font-bold text-[var(--color-dash-text)] font-mono">{UNIT_CONFIG.formatTemp(seg.weather.temperatureC)}</span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Icon size={12} weight="duotone" className="text-white/60" />
+                      <span className="text-[10px] font-bold text-white font-mono">{UNIT_CONFIG.formatTemp(seg.weather.temperatureC)}</span>
                     </div>
                   </div>
                 </div>
@@ -987,34 +1073,12 @@ function App() {
             })}
           </div>
         </div>
-
-        {/* Actionable Driver Alerts */}
-        {warnings.length > 0 && (
-          <div className="flex flex-col gap-2 pb-4">
-            <h3 className="text-dash-label">Route Hazards & Action Plan</h3>
-            {warnings.map((warn, i) => (
-              <div 
-                key={i} 
-                className={`p-3 border rounded-xl flex gap-2.5 
-                  ${warn.type === 'critical' 
-                    ? 'bg-rose-500/10 border-rose-500/20 text-rose-300' 
-                    : 'bg-amber-500/10 border-amber-500/20 text-amber-300'}`}
-              >
-                <Warning size={16} className="shrink-0 mt-0.5" />
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-[11px] font-bold uppercase tracking-wider">{warn.title}</span>
-                  <p className="text-[10px] leading-relaxed opacity-90">{warn.text}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      </>
     );
   };
 
   return (
-    <div ref={containerRef} className={`relative w-full h-screen overflow-hidden text-text-primary font-sans flex ${theme === 'light' ? 'theme-light' : theme === 'night' ? 'theme-night' : ''} ${isSnapshotMode ? 'bg-transparent pointer-events-none snapshot-mode' : 'bg-bg-base'}`}>
+    <div ref={containerRef} className={`relative w-full h-screen overflow-hidden text-white font-sans flex ${isSnapshotMode ? 'bg-transparent pointer-events-none snapshot-mode' : 'bg-[#0a0a0b]'}`}>
       <style>
         {isSnapshotMode && `
           .maplibregl-ctrl-bottom-left, .maplibregl-ctrl-bottom-right, .maplibregl-ctrl-top-left, .maplibregl-ctrl-top-right {
@@ -1023,11 +1087,43 @@ function App() {
         `}
       </style>
 
-      {/* Floating Map Title */}
+      {/* Floating Pill Top Navigation */}
+      {!isSnapshotMode && (
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 z-20 flex items-center justify-between gap-6 px-6 py-2.5 rounded-full dash-glass bg-zinc-950/80 border border-white/10 shadow-2xl w-[90%] max-w-[800px] pointer-events-auto">
+          <div className="flex items-center gap-2 select-none">
+            <Brain size={18} weight="fill" className="text-white" />
+            <span className="text-[10px] font-bold uppercase tracking-widest text-white leading-none">RouteWeather</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {(['route-weather', 'fleet', 'history', 'ai-insights'] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-4 py-1.5 rounded-full text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer select-none
+                  ${activeTab === tab 
+                    ? 'bg-white text-zinc-950 shadow-md font-bold' 
+                    : 'text-white/60 hover:text-white/90 hover:bg-white/5'}`}
+              >
+                {tab === 'route-weather' ? 'Route Planner' : tab === 'ai-insights' ? 'AI Insights' : tab}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Large Floating Route Map Title */}
       {!isSnapshotMode && routeData && (
-        <div className="absolute top-6 left-1/2 -translate-x-1/2 md:left-[calc(50%+220px)] pointer-events-none z-20 animate-in fade-in slide-in-from-top-4">
-          <div className="dash-glass px-6 py-2 rounded-full shadow-2xl flex items-center gap-2">
-            <h1 className="text-dash-label !text-[10px] !tracking-widest !m-0 font-bold">Weather Intelligence Map</h1>
+        <div className="absolute top-24 left-[450px] z-10 pointer-events-none flex flex-col gap-2">
+          <h1 className="text-3xl font-light tracking-wide text-white drop-shadow">Weather Intelligence</h1>
+          <div className="flex items-center gap-2 pointer-events-auto">
+            <div className="dash-glass bg-zinc-950/80 border border-white/10 px-3 py-1 rounded-xl text-[9px] font-bold uppercase tracking-wider text-white/80 flex items-center gap-1.5 cursor-default">
+              <MapPin size={10} />
+              {routeData.originName.split(',')[0]} → {routeData.destName.split(',')[0]}
+            </div>
+            <div className="dash-glass bg-zinc-950/80 border border-white/10 px-3 py-1 rounded-xl text-[9px] font-bold uppercase tracking-wider text-white/80 flex items-center gap-1.5 cursor-default">
+              <Clock size={10} />
+              ETA {Math.round(routeData.totalTimeMins)}m ({Math.round(routeData.totalDistanceMi)} mi)
+            </div>
           </div>
         </div>
       )}
@@ -1038,7 +1134,7 @@ function App() {
           <div className="relative">
             <button 
               onClick={() => setShowShareMenu(!showShareMenu)}
-              className="dash-glass px-4 py-2 text-xs font-bold flex items-center gap-2 shadow-2xl hover:bg-white/10 transition-colors text-[var(--color-dash-text)] bg-zinc-950/80 border border-white/10 cursor-pointer"
+              className="dash-glass px-4 py-2 text-xs font-bold flex items-center gap-2 shadow-2xl hover:bg-white/10 transition-colors text-white bg-zinc-950/80 border border-white/10 cursor-pointer"
             >
               <ShareNetwork size={14} />
               Share
@@ -1048,21 +1144,21 @@ function App() {
               <div className="absolute right-0 mt-2 w-48 dash-glass bg-zinc-950/95 border border-white/10 shadow-2xl rounded-xl py-1 z-30 animate-in fade-in slide-in-from-top-2 duration-150">
                 <button 
                   onClick={handleCopyLink}
-                  className="w-full px-4 py-2.5 text-xs text-left text-[var(--color-dash-text)] hover:bg-white/5 flex items-center gap-2 transition-colors cursor-pointer"
+                  className="w-full px-4 py-2.5 text-xs text-left text-white hover:bg-white/5 flex items-center gap-2 transition-colors cursor-pointer"
                 >
                   <Link size={14} />
                   Copy Link
                 </button>
                 <button 
                   onClick={handleDownloadImage}
-                  className="w-full px-4 py-2.5 text-xs text-left text-[var(--color-dash-text)] hover:bg-white/5 flex items-center gap-2 transition-colors cursor-pointer"
+                  className="w-full px-4 py-2.5 text-xs text-left text-white hover:bg-white/5 flex items-center gap-2 transition-colors cursor-pointer"
                 >
                   <ImageIcon size={14} />
                   Save Image (PNG)
                 </button>
                 <button 
                   onClick={handleNativeShare}
-                  className="w-full px-4 py-2.5 text-xs text-left text-[var(--color-dash-text)] hover:bg-white/5 flex items-center gap-2 transition-colors cursor-pointer"
+                  className="w-full px-4 py-2.5 text-xs text-left text-white hover:bg-white/5 flex items-center gap-2 transition-colors cursor-pointer"
                 >
                   <Export size={14} />
                   Native Share
@@ -1085,7 +1181,7 @@ function App() {
           }}
           canvasContextAttributes={{ preserveDrawingBuffer: true }}
           style={{ width: '100%', height: '100%' }}
-          mapStyle={theme === 'light' ? 'https://tiles.openfreemap.org/styles/positron' : 'https://tiles.openfreemap.org/styles/dark'}
+          mapStyle={getHybridMapStyle() as any}
         >
           {/* Glowing Route Line Segments sliced along REAL road geometry */}
           {(routeState === 'animating' || routeState === 'visible') && routeData && routeData.segments.slice(0, -1).map((seg, i) => {
@@ -1120,23 +1216,24 @@ function App() {
 
             return (
               <Source key={`source-${seg.id}`} id={`route-${seg.id}`} type="geojson" data={segmentGeoJson as any}>
-                {/* Contrast Underlay */}
+                {/* Subtle White Glow Underlay */}
                 <Layer
                   id={`route-line-${seg.id}`}
                   type="line"
                   paint={{
-                    'line-color': '#000000',
-                    'line-width': 7,
-                    'line-opacity': 0.4
+                    'line-color': 'rgba(255, 255, 255, 0.25)',
+                    'line-width': 6,
+                    'line-blur': 2.5
                   }}
                 />
-                {/* Weather Styled Core Line */}
+                {/* Core White Dashed Route Line */}
                 <Layer
                   id={`route-line-core-${seg.id}`}
                   type="line"
                   paint={{
-                    'line-color': getSegmentColor(seg),
-                    'line-width': 3.5,
+                    'line-color': '#ffffff',
+                    'line-width': 2,
+                    'line-dasharray': [2, 3]
                   }}
                 />
               </Source>
@@ -1173,9 +1270,9 @@ function App() {
                 style={{ zIndex: 40 }}
               >
                 <div className="relative flex items-center justify-center pointer-events-none">
-                  <div className="absolute w-8 h-8 bg-white border border-white rounded-full opacity-35 animate-ping"></div>
+                  <div className="absolute w-8 h-8 bg-white border border-white rounded-full opacity-20 animate-ping"></div>
                   <div 
-                    className="w-6 h-6 bg-white border-2 border-zinc-955 rounded-full flex items-center justify-center shadow-[0_0_10px_rgba(0,0,0,0.5)]"
+                    className="w-6 h-6 bg-white border-2 border-zinc-950 rounded-full flex items-center justify-center shadow-[0_0_10px_rgba(0,0,0,0.5)]"
                     style={{ transform: `rotate(${accumulatedBearingRef.current}deg)` }}
                   >
                     <svg className="w-3.5 h-3.5 text-zinc-950" viewBox="0 0 24 24" fill="currentColor">
@@ -1212,10 +1309,13 @@ function App() {
                 <div className="relative">
                   {/* Contextual Tooltip */}
                   {!isSnapshotMode && isHovered && (
-                    <div className="absolute bottom-full mb-3 -translate-x-1/2 left-1/2 flex flex-col items-center animate-in fade-in zoom-in-95 duration-150 pointer-events-none z-50">
-                      <div className="dash-glass px-4 py-2 shadow-2xl text-center rounded-xl whitespace-nowrap bg-zinc-955/90 border border-white/10">
-                        <div className="text-[9px] uppercase tracking-widest font-bold mb-0.5 text-[var(--color-dash-text-muted)] truncate max-w-[150px]">{seg.locationName}</div>
-                        <div className="text-xl font-bold font-mono text-[var(--color-dash-text)]">{UNIT_CONFIG.formatTemp(seg.weather.temperatureC)}</div>
+                    <div className="absolute bottom-full mb-3.5 -translate-x-1/2 left-1/2 flex flex-col items-center animate-in fade-in zoom-in-95 duration-150 pointer-events-none z-50">
+                      <div className="dash-glass px-4 py-2.5 shadow-2xl text-left rounded-xl bg-zinc-950/90 border border-white/10 w-44">
+                        <div className="text-[10px] font-bold text-white/50 uppercase tracking-widest truncate">{seg.locationName.split('(')[0]}</div>
+                        <div className="flex justify-between items-baseline mt-1.5">
+                          <span className="text-lg font-light text-white leading-none font-mono">{UNIT_CONFIG.formatTemp(seg.weather.temperatureC)}</span>
+                          <span className="text-[8px] font-bold uppercase tracking-wider text-white/40">{seg.weather.condition.split(' ')[0]}</span>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1229,12 +1329,11 @@ function App() {
                       e.stopPropagation();
                       setDetailedCheckpoint(seg);
                     }}
-                    className={`flex items-center justify-center transition-transform duration-300
+                    className={`flex items-center justify-center transition-transform duration-200
                       ${isHovered && !isSnapshotMode ? 'scale-125' : (!isSnapshotMode ? 'hover:scale-115 cursor-pointer' : '')}
                       animate-in fade-in zoom-in`}
                   >
-                    <div className="w-3.5 h-3.5 rounded-full bg-white border-2 border-zinc-950 shadow-[0_0_8px_rgba(0,0,0,0.6)] flex items-center justify-center transition-colors animate-gentle-pulse">
-                    </div>
+                    <div className="w-3.5 h-3.5 rounded-full bg-white border-2 border-zinc-950 shadow-[0_0_8px_rgba(0,0,0,0.6)] flex items-center justify-center transition-colors animate-gentle-pulse" />
                   </div>
                 </div>
               </Marker>
@@ -1243,66 +1342,24 @@ function App() {
         </Map>
       </div>
 
-      {/* Unified Sidebar Panel */}
-      {!isSnapshotMode && (
-        <div 
-          className={`absolute top-6 left-6 bottom-6 w-[420px] max-w-[calc(100vw-3rem)] z-10 transition-all duration-300 ease-in-out flex flex-col pointer-events-auto
-            ${isSidebarCollapsed ? '-translate-x-[calc(100%+2rem)]' : 'translate-x-0'}`}
-        >
-          <div className="dash-glass h-full flex flex-col overflow-hidden shadow-2xl relative bg-zinc-955/80 border border-white/10">
-            
-            {/* Header */}
-            <div className="p-4 border-b border-white/10 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-[var(--weather-safe)] animate-pulse"></div>
-                <span className="font-bold tracking-tight text-[var(--color-dash-text)] text-sm">RouteWeather</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                {/* Theme Toggle */}
-                <button 
-                  onClick={() => setTheme(theme === 'dark' ? 'night' : theme === 'night' ? 'light' : 'dark')}
-                  className="p-1.5 hover:bg-white/10 rounded-lg text-[var(--color-dash-text-muted)] hover:text-[var(--color-dash-text)] transition-colors cursor-pointer"
-                  title={`Theme: ${theme}`}
-                >
-                  {theme === 'light' ? <Sun size={16} /> : theme === 'dark' ? <Moon size={16} /> : <MoonStars size={16} />}
-                </button>
-                
-                {/* Collapse Button */}
-                <button 
-                  onClick={() => setIsSidebarCollapsed(true)}
-                  className="p-1.5 hover:bg-white/10 rounded-lg text-[var(--color-dash-text-muted)] hover:text-[var(--color-dash-text)] transition-colors cursor-pointer"
-                  title="Collapse Sidebar"
-                >
-                  <CaretLeft size={16} />
-                </button>
-              </div>
-            </div>
-
-            {/* Navigation Tabs */}
-            <div className="flex border-b border-white/10 shrink-0 bg-white/[0.02]">
-              {(['route-weather', 'fleet', 'history', 'ai-insights'] as const).map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`flex-1 py-3 text-[10px] font-bold uppercase tracking-wider text-center border-b-2 transition-all cursor-pointer
-                    ${activeTab === tab 
-                      ? 'border-[var(--color-dash-text)] text-[var(--color-dash-text)] bg-white/[0.02]' 
-                      : 'border-transparent text-[var(--color-dash-text-muted)] hover:text-[var(--color-dash-text)] hover:bg-white/[0.01]'}`}
-                >
-                  {tab === 'route-weather' ? 'Route' : tab === 'ai-insights' ? 'AI Insights' : tab}
-                </button>
-              ))}
-            </div>
-
-            {/* Scrollable Tab Content Area */}
-            <div className="flex-1 overflow-y-auto no-scrollbar p-4 flex flex-col gap-4 min-h-0">
-              {activeTab === 'route-weather' && renderRouteWeatherTab()}
-              {activeTab === 'fleet' && renderFleetTab()}
-              {activeTab === 'history' && renderHistoryTab()}
-              {activeTab === 'ai-insights' && renderAIInsightsTab()}
-            </div>
-            
+      {/* Transparent Sidebar Panel Stacker */}
+      {!isSnapshotMode && !isSidebarCollapsed && (
+        <div className="absolute left-6 top-24 bottom-6 w-[400px] z-20 flex flex-col pointer-events-none select-none animate-in fade-in slide-in-from-left-4 duration-300 gap-4 min-h-0">
+          <div className="flex items-center justify-between pointer-events-auto shrink-0 pr-2">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Dashboard Panel</span>
+            <button 
+              onClick={() => setIsSidebarCollapsed(true)}
+              className="p-1 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors cursor-pointer"
+              title="Collapse Sidebar"
+            >
+              <CaretLeft size={16} />
+            </button>
           </div>
+          
+          {activeTab === 'route-weather' && renderRouteWeatherTab()}
+          {activeTab === 'fleet' && renderFleetTab()}
+          {activeTab === 'history' && renderHistoryTab()}
+          {activeTab === 'ai-insights' && renderAIInsightsTab()}
         </div>
       )}
 
@@ -1310,11 +1367,75 @@ function App() {
       {!isSnapshotMode && isSidebarCollapsed && (
         <button 
           onClick={() => setIsSidebarCollapsed(false)}
-          className="absolute top-6 left-6 z-20 w-10 h-10 dash-glass flex items-center justify-center shadow-2xl hover:bg-white/15 transition-all active:scale-95 text-[var(--color-dash-text)] cursor-pointer animate-in fade-in bg-zinc-950/80 border border-white/10"
+          className="absolute top-24 left-6 z-20 w-10 h-10 dash-glass flex items-center justify-center shadow-2xl hover:bg-white/15 transition-all active:scale-95 text-white cursor-pointer animate-in fade-in bg-zinc-950/80 border border-white/10"
           title="Expand Sidebar"
         >
           <CaretRight size={18} />
         </button>
+      )}
+
+      {/* Zoom controls on map */}
+      {!isSnapshotMode && (
+        <div className="absolute bottom-6 left-[450px] z-10 flex items-center gap-1.5 p-1 rounded-full dash-glass bg-zinc-950/80 border border-white/10 pointer-events-auto shadow-2xl">
+          <button 
+            onClick={() => mapRef.current?.zoomIn()}
+            className="w-7 h-7 rounded-full flex items-center justify-center text-white/75 hover:text-white hover:bg-white/10 transition-colors cursor-pointer text-xs font-bold"
+            title="Zoom In"
+          >
+            +
+          </button>
+          <div className="w-px h-3 bg-white/10" />
+          <button 
+            onClick={() => mapRef.current?.zoomOut()}
+            className="w-7 h-7 rounded-full flex items-center justify-center text-white/75 hover:text-white hover:bg-white/10 transition-colors cursor-pointer text-xs font-bold"
+            title="Zoom Out"
+          >
+            −
+          </button>
+        </div>
+      )}
+
+      {/* Bottom Right Conditions Summary */}
+      {!isSnapshotMode && routeData && (
+        <div className="absolute bottom-6 right-6 z-10 w-[360px] dash-glass p-5 pointer-events-auto bg-zinc-950/85 border border-white/10 rounded-2xl shadow-2xl flex flex-col gap-3 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div>
+            <div className="text-[10px] uppercase font-bold tracking-widest text-white/40 mb-1">Conditions Summary</div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-light text-white">{routeData.overallRisk}%</span>
+              <span className="text-[9px] text-white/40 uppercase tracking-widest font-bold">Overall Route Threat</span>
+            </div>
+          </div>
+          
+          <table className="w-full mt-1 border-collapse">
+            <thead>
+              <tr className="text-left text-[8px] uppercase tracking-wider text-white/40 font-bold">
+                <th className="pb-1.5 font-bold">Checkpoint</th>
+                <th className="pb-1.5 font-bold">Temp</th>
+                <th className="pb-1.5 text-right font-bold">Risk Delta</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(() => {
+                const originTemp = routeData.segments[0].weather.temperatureC;
+                return routeData.segments.slice(1, 5).map((seg) => {
+                  const tempDelta = seg.weather.temperatureC - originTemp;
+                  const sign = tempDelta > 0 ? '+' : '';
+                  const deltaColor = tempDelta > 0 ? 'text-[#ef4444]' : tempDelta < 0 ? 'text-sky-400' : 'text-white/40';
+                  
+                  return (
+                    <tr key={seg.id} className="border-t border-white/5">
+                      <td className="py-2 text-[10px] text-white/80 font-semibold truncate max-w-[120px]">{seg.locationName.split('(')[0]}</td>
+                      <td className="py-2 text-[10px] font-mono text-white/90">{UNIT_CONFIG.formatTemp(seg.weather.temperatureC)}</td>
+                      <td className={`py-2 text-[10px] font-mono font-bold text-right ${deltaColor}`}>
+                        {tempDelta === 0 ? '0°C' : `${sign}${tempDelta}°C`}
+                      </td>
+                    </tr>
+                  );
+                });
+              })()}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {/* Detailed Checkpoint Modal */}
@@ -1323,38 +1444,38 @@ function App() {
           <div className="dash-glass p-6 max-w-md w-full shadow-2xl relative border border-white/10 bg-zinc-950/90 animate-in zoom-in-95 duration-200 flex flex-col gap-4 text-left">
             <button 
               onClick={() => setDetailedCheckpoint(null)}
-              className="absolute top-4 right-4 text-[var(--color-dash-text-muted)] hover:text-[var(--color-dash-text)] transition-colors p-1 hover:bg-white/10 rounded-lg cursor-pointer"
+              className="absolute top-4 right-4 text-white/50 hover:text-white transition-colors p-1 hover:bg-white/10 rounded-lg cursor-pointer"
             >
               <X size={18} />
             </button>
             
             <div>
-              <div className="text-[10px] uppercase font-bold tracking-widest text-[var(--color-dash-text-muted)] mb-1">Weather Station Detail</div>
-              <h3 className="text-xl font-bold text-[var(--color-dash-text)] leading-tight">{detailedCheckpoint.locationName}</h3>
-              <div className="text-[10px] text-[var(--color-dash-text-muted)] mt-1 font-mono">
+              <div className="text-[10px] uppercase font-bold tracking-widest text-white/40 mb-1">Weather Station Detail</div>
+              <h3 className="text-xl font-bold text-white leading-tight">{detailedCheckpoint.locationName}</h3>
+              <div className="text-[10px] text-white/40 mt-1 font-mono">
                 {detailedCheckpoint.coordinates[1].toFixed(4)}°N, {detailedCheckpoint.coordinates[0].toFixed(4)}°E
               </div>
             </div>
 
             <div className="flex items-center gap-4 py-4 border-y border-white/5">
-              <div className="p-3 bg-white/5 rounded-2xl text-[var(--color-dash-text)]">
+              <div className="p-3 bg-white/5 rounded-2xl text-white">
                 {(() => {
                   const Icon = IconMap[detailedCheckpoint.weather.icon] || Sun;
                   return <Icon size={40} weight="duotone" />;
                 })()}
               </div>
               <div>
-                <div className="text-[2.5rem] font-light leading-none font-mono text-[var(--color-dash-text)]">
+                <div className="text-[2.5rem] font-light leading-none font-mono text-white">
                   {UNIT_CONFIG.formatTemp(detailedCheckpoint.weather.temperatureC)}
                 </div>
-                <div className="text-xs font-medium text-[var(--color-dash-text-muted)] mt-1 flex items-center gap-1.5">
+                <div className="text-xs font-medium text-white/55 mt-1 flex items-center gap-1.5">
                   <Thermometer size={14} />
                   Feels like {UNIT_CONFIG.formatTemp(detailedCheckpoint.weather.feelsLikeC)}
                 </div>
               </div>
               <div className="ml-auto text-right">
-                <div className="text-sm font-bold text-[var(--color-dash-text)]">{detailedCheckpoint.weather.condition}</div>
-                <div className="text-[10px] text-[var(--color-dash-text-muted)] mt-1">
+                <div className="text-sm font-bold text-white">{detailedCheckpoint.weather.condition}</div>
+                <div className="text-[10px] text-white/40 mt-1">
                   ETA: {new Date(detailedCheckpoint.eta).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </div>
               </div>
@@ -1362,61 +1483,61 @@ function App() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-white/[0.02] p-3 rounded-xl border border-white/5 flex flex-col gap-1">
-                <div className="text-[10px] uppercase tracking-wider text-[var(--color-dash-text-muted)] flex items-center gap-1.5">
+                <div className="text-[10px] uppercase tracking-wider text-white/40 flex items-center gap-1.5">
                   <CloudRain size={12} />
                   Precipitation
                 </div>
-                <div className="text-xs font-semibold font-mono text-[var(--color-dash-text)]">
+                <div className="text-xs font-semibold font-mono text-white">
                   {detailedCheckpoint.weather.rainProbability}% ({detailedCheckpoint.weather.precipitationIn} in)
                 </div>
               </div>
               
               <div className="bg-white/[0.02] p-3 rounded-xl border border-white/5 flex flex-col gap-1">
-                <div className="text-[10px] uppercase tracking-wider text-[var(--color-dash-text-muted)] flex items-center gap-1.5">
+                <div className="text-[10px] uppercase tracking-wider text-white/40 flex items-center gap-1.5">
                   <Wind size={12} />
                   Wind
                 </div>
-                <div className="text-xs font-semibold font-mono text-[var(--color-dash-text)]">
+                <div className="text-xs font-semibold font-mono text-white">
                   {detailedCheckpoint.weather.windSpeedMph} mph {detailedCheckpoint.weather.windDirection}
                 </div>
               </div>
 
               <div className="bg-white/[0.02] p-3 rounded-xl border border-white/5 flex flex-col gap-1">
-                <div className="text-[10px] uppercase tracking-wider text-[var(--color-dash-text-muted)] flex items-center gap-1.5">
+                <div className="text-[10px] uppercase tracking-wider text-white/40 flex items-center gap-1.5">
                   <Drop size={12} />
                   Humidity
                 </div>
-                <div className="text-xs font-semibold font-mono text-[var(--color-dash-text)]">
+                <div className="text-xs font-semibold font-mono text-white">
                   {detailedCheckpoint.weather.humidity}%
                 </div>
               </div>
 
               <div className="bg-white/[0.02] p-3 rounded-xl border border-white/5 flex flex-col gap-1">
-                <div className="text-[10px] uppercase tracking-wider text-[var(--color-dash-text-muted)] flex items-center gap-1.5">
+                <div className="text-[10px] uppercase tracking-wider text-white/40 flex items-center gap-1.5">
                   <Eye size={12} />
                   Visibility
                 </div>
-                <div className="text-xs font-semibold font-mono text-[var(--color-dash-text)]">
+                <div className="text-xs font-semibold font-mono text-white">
                   {detailedCheckpoint.weather.visibilityMi} mi
                 </div>
               </div>
 
               <div className="bg-white/[0.02] p-3 rounded-xl border border-white/5 flex flex-col gap-1">
-                <div className="text-[10px] uppercase tracking-wider text-[var(--color-dash-text-muted)] flex items-center gap-1.5">
+                <div className="text-[10px] uppercase tracking-wider text-white/40 flex items-center gap-1.5">
                   <Cloud size={12} />
                   Cloud Cover
                 </div>
-                <div className="text-xs font-semibold font-mono text-[var(--color-dash-text)]">
+                <div className="text-xs font-semibold font-mono text-white">
                   {detailedCheckpoint.weather.cloudCover}%
                 </div>
               </div>
 
               <div className="bg-white/[0.02] p-3 rounded-xl border border-white/5 flex flex-col gap-1">
-                <div className="text-[10px] uppercase tracking-wider text-[var(--color-dash-text-muted)] flex items-center gap-1.5">
+                <div className="text-[10px] uppercase tracking-wider text-white/40 flex items-center gap-1.5">
                   <Info size={12} />
                   UV Index
                 </div>
-                <div className="text-xs font-semibold font-mono text-[var(--color-dash-text)]">
+                <div className="text-xs font-semibold font-mono text-white">
                   {detailedCheckpoint.weather.uvIndex}
                 </div>
               </div>
@@ -1424,9 +1545,7 @@ function App() {
 
             <div className={`p-4 rounded-xl border flex flex-col gap-1.5 mt-2
               ${detailedCheckpoint.weather.severity === 'safe' 
-                ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' 
-                : detailedCheckpoint.weather.severity === 'warning'
-                ? 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+                ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' 
                 : 'bg-rose-500/10 border-rose-500/20 text-rose-400'}`}>
               <div className="text-[10px] uppercase font-bold tracking-widest flex items-center gap-1.5">
                 <Warning size={12} weight="fill" />
