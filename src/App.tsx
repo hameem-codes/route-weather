@@ -19,7 +19,9 @@ import {
   ShareNetwork,
   Image as ImageIcon,
   Link,
-  Export
+  Export,
+  CaretUp,
+  CaretDown
 } from '@phosphor-icons/react'
 import * as maplibregl from 'maplibre-gl';
 import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
@@ -186,6 +188,7 @@ function App() {
   // Animation State
   const [routeState, setRouteState] = useState<'hidden' | 'animating' | 'visible'>('hidden');
   const [progress, setProgress] = useState(0); // 0 to 1
+  const [isTimelineExpanded, setIsTimelineExpanded] = useState(true);
 
   // Marker & Share Interaction State
   const [hoveredMarkerId, setHoveredMarkerId] = useState<string | null>(null);
@@ -821,12 +824,27 @@ function App() {
 
           {/* Timeline (Scrollable) */}
           {routeData && (
-            <div className="pointer-events-auto flex-1 overflow-y-auto no-scrollbar bg-zinc-900/80 backdrop-blur-xl border border-zinc-800 rounded-2xl p-5 shadow-2xl relative">
-              <h2 className="text-sm font-semibold uppercase tracking-widest text-zinc-500 mb-6 px-2 sticky top-0 bg-zinc-900/90 backdrop-blur py-2 z-10 -mt-2">Weather Route</h2>
+            <div className={`pointer-events-auto bg-zinc-900/80 backdrop-blur-xl border border-zinc-800 rounded-2xl shadow-2xl relative flex flex-col transition-all duration-300 ${isTimelineExpanded ? 'flex-1' : ''}`}>
+              {/* Header */}
+              <div 
+                className={`flex items-center justify-between p-4 px-5 cursor-pointer hover:bg-zinc-800/30 transition-colors ${isTimelineExpanded ? 'border-b border-zinc-800/50' : ''}`}
+                onClick={() => setIsTimelineExpanded(!isTimelineExpanded)}
+              >
+                <h2 className="text-sm font-semibold uppercase tracking-widest text-zinc-300">Weather Route</h2>
+                <button 
+                  className="p-1 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
+                  title={isTimelineExpanded ? "Collapse Timeline" : "Expand Timeline"}
+                >
+                  {isTimelineExpanded ? <CaretDown size={18} weight="bold" /> : <CaretUp size={18} weight="bold" />}
+                </button>
+              </div>
               
-              <div className="relative pl-6 pb-4">
-                {/* Connecting line */}
-                <div className="absolute top-4 bottom-4 left-[11px] w-[2px] bg-zinc-800 rounded-full"></div>
+              {/* Content */}
+              {isTimelineExpanded && (
+                <div className="flex-1 overflow-y-auto no-scrollbar p-5 pt-6">
+                  <div className="relative pl-6 pb-4">
+                    {/* Connecting line */}
+                    <div className="absolute top-4 bottom-4 left-[11px] w-[2px] bg-zinc-800 rounded-full"></div>
                 
                 <div className="flex flex-col gap-8">
                   {routeData.segments.map((seg) => {
@@ -881,10 +899,11 @@ function App() {
                 </div>
               </div>
             </div>
+            )}
+          </div>
           )}
         </div>
       )}
-
       {/* Detailed Weather Modal (Hidden in Snapshot Mode) */}
       {!isSnapshotMode && selectedMarker && (
         <div 
