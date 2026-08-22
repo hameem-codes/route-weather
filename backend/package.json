@@ -7,6 +7,9 @@
     "deploy": "wrangler deploy"
   },
   "dependencies": {
+    "@turf/along": "^7.4.0",
+    "@turf/distance": "^7.4.0",
+    "@turf/helpers": "^7.4.0",
     "hono": "^4.0.0"
   },
   "devDependencies": {

@@ -28,7 +28,7 @@ import * as maplibregl from 'maplibre-gl';
 import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import Map, { Source, Layer, Marker } from 'react-map-gl/maplibre';
 import type { MapRef } from 'react-map-gl/maplibre';
-import along from '@turf/along';
+
 import bearing from '@turf/bearing';
 import distance from '@turf/distance';
 import { point } from '@turf/helpers';
@@ -39,68 +39,14 @@ maplibregl.setWorkerUrl(mapLibreWorkerUrl);
 
 import 'maplibre-gl/dist/maplibre-gl.css';
 
-const hardcodedWeatherProfiles = [
-  { 
-    weather: { 
-      condition: "Clear", temperatureF: 62, severity: "safe", icon: Sun,
-      rainProbability: 0, feelsLikeF: 61, humidity: 45, windSpeedMph: 10, windDirection: "NW",
-      visibilityMi: 10, precipitationIn: 0, cloudCover: 5, uvIndex: 7,
-      forecastText: "Clear skies expected for the next 4 hours.",
-      riskAssessment: "Optimal driving conditions."
-    }, 
-    alert: null 
-  },
-  { 
-    weather: { 
-      condition: "Cloudy", temperatureF: 58, severity: "safe", icon: Cloud,
-      rainProbability: 10, feelsLikeF: 57, humidity: 60, windSpeedMph: 12, windDirection: "W",
-      visibilityMi: 10, precipitationIn: 0, cloudCover: 80, uvIndex: 4,
-      forecastText: "Overcast conditions remaining steady.",
-      riskAssessment: "Optimal driving conditions."
-    }, 
-    alert: null 
-  },
-  { 
-    weather: { 
-      condition: "Rain", temperatureF: 52, severity: "warning", icon: CloudRain,
-      rainProbability: 85, feelsLikeF: 49, humidity: 88, windSpeedMph: 18, windDirection: "SW",
-      visibilityMi: 5, precipitationIn: 0.15, cloudCover: 100, uvIndex: 1,
-      forecastText: "Continuous rain expected through the afternoon.",
-      riskAssessment: "Reduced traction. Increase following distance."
-    }, 
-    alert: "Moderate Rain, Slick Roads" 
-  },
-  { 
-    weather: { 
-      condition: "Heavy Rain", temperatureF: 46, severity: "warning", icon: CloudLightning,
-      rainProbability: 100, feelsLikeF: 39, humidity: 95, windSpeedMph: 25, windDirection: "S",
-      visibilityMi: 2, precipitationIn: 0.8, cloudCover: 100, uvIndex: 0,
-      forecastText: "Heavy downpours with isolated lightning.",
-      riskAssessment: "High risk of hydroplaning. Reduce speed significantly."
-    }, 
-    alert: "Heavy Downpour" 
-  },
-  { 
-    weather: { 
-      condition: "Snow", temperatureF: 28, severity: "critical", icon: Snowflake,
-      rainProbability: 95, feelsLikeF: 15, humidity: 82, windSpeedMph: 20, windDirection: "NE",
-      visibilityMi: 1, precipitationIn: 0.4, cloudCover: 100, uvIndex: 1,
-      forecastText: "Steady snowfall accumulation of 2-4 inches expected.",
-      riskAssessment: "Severe winter conditions. Chains required on all non-4WD vehicles."
-    }, 
-    alert: "Chain Control in Effect" 
-  },
-  { 
-    weather: { 
-      condition: "Light Snow", temperatureF: 22, severity: "critical", icon: CloudSnow,
-      rainProbability: 60, feelsLikeF: 8, humidity: 75, windSpeedMph: 14, windDirection: "N",
-      visibilityMi: 4, precipitationIn: 0.1, cloudCover: 90, uvIndex: 2,
-      forecastText: "Light flurries tapering off by evening.",
-      riskAssessment: "Black ice possible on shaded roadways."
-    }, 
-    alert: "Icy Roads" 
-  }
-];
+const IconMap: Record<string, any> = {
+  "Sun": Sun,
+  "Cloud": Cloud,
+  "CloudRain": CloudRain,
+  "CloudLightning": CloudLightning,
+  "Snowflake": Snowflake,
+  "CloudSnow": CloudSnow
+};
 
 const getRasterMapStyle = (theme: 'dark' | 'light') => ({
   version: 8,
@@ -257,28 +203,24 @@ function App() {
       const routeFeature = { type: 'Feature', geometry: routeGeometry, properties: {} } as any;
       const totalTimeMins = Math.round(routeResult.duration / 60);
 
-      // 4. Create Weather Checkpoints evenly spaced along the actual road
-      const segments = [];
-      const numSegments = hardcodedWeatherProfiles.length;
+      // 4. Fetch Weather Checkpoints
+      const weatherRes = await fetch('http://localhost:8787/api/weather/route', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+           geometry: routeGeometry,
+           duration: routeResult.duration,
+           originName: oInput.split(',')[0],
+           destName: dInput.split(',')[0]
+        })
+      });
       
-      for (let i = 0; i < numSegments; i++) {
-        const dist = (i / (numSegments - 1)) * totalDistanceMi;
-        const pt = along(routeFeature, dist, { units: 'miles' });
-        
-        let locName = `Checkpoint ${i}`;
-        if (i === 0) locName = oInput.split(',')[0];
-        if (i === numSegments - 1) locName = dInput.split(',')[0];
-        
-        segments.push({
-          id: `seg_${i}`,
-          distanceFromStartMi: dist, // precise float distance for Turf slicing
-          timeFromStartMins: Math.round((i / (numSegments - 1)) * totalTimeMins),
-          locationName: locName,
-          coordinates: pt.geometry.coordinates,
-          weather: hardcodedWeatherProfiles[i].weather,
-          alert: hardcodedWeatherProfiles[i].alert
-        });
+      if (!weatherRes.ok) {
+        throw new Error("Failed to fetch weather data");
       }
+      
+      const weatherData = await weatherRes.json();
+      const segments = weatherData.data;
 
       setRouteData({
         totalDistanceMi,
@@ -722,7 +664,10 @@ function App() {
                   >
                     <div className={`bg-bg-surface backdrop-blur-md border rounded-lg p-1.5 shadow-lg flex items-center justify-center mb-1 transition-colors
                       ${isSelected && !isSnapshotMode ? 'border-current' : 'border-border-subtle'}`}>
-                       <seg.weather.icon size={22} weight={isSelected && !isSnapshotMode ? "fill" : "duotone"} />
+                       {(() => {
+                         const WeatherIcon = IconMap[seg.weather.icon] || Sun;
+                         return <WeatherIcon size={22} weight={isSelected && !isSnapshotMode ? "fill" : "duotone"} />;
+                       })()}
                     </div>
                     <div className="w-1.5 h-1.5 rounded-full bg-current shadow-[0_0_10px_currentColor]"></div>
                   </div>
