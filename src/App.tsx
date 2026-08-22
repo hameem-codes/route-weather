@@ -216,22 +216,17 @@ function App() {
     const dInput = overrideDest || destInput;
     
     try {
-      // 1. Geocode Origin via Nominatim
-      const originRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(oInput)}&format=json&limit=1`);
-      const originData = await originRes.json();
-      if (!originData.length) throw new Error("Origin not found");
-      const originCoords = [parseFloat(originData[0].lon), parseFloat(originData[0].lat)];
+      // Backend unified routing call
+      // The backend handles Nominatim geocoding (with rate limiting) and OSRM routing.
+      const routeRes = await fetch(`http://localhost:8787/api/route?origin=${encodeURIComponent(oInput)}&destination=${encodeURIComponent(dInput)}`);
+      if (!routeRes.ok) {
+        const errorData = await routeRes.json();
+        throw new Error(errorData.error || "Failed to fetch route");
+      }
+      
+      const routeResponse = await routeRes.json();
+      const osrmData = routeResponse.data.osrm;
 
-      // 2. Geocode Destination via Nominatim (1s delay to strictly respect 1 request/sec rate limit)
-      await new Promise(r => setTimeout(r, 1000));
-      const destRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(dInput)}&format=json&limit=1`);
-      const destData = await destRes.json();
-      if (!destData.length) throw new Error("Destination not found");
-      const destCoords = [parseFloat(destData[0].lon), parseFloat(destData[0].lat)];
-
-      // 3. Fetch OSRM Route
-      const osrmRes = await fetch(`https://router.project-osrm.org/route/v1/driving/${originCoords[0]},${originCoords[1]};${destCoords[0]},${destCoords[1]}?overview=full&geometries=geojson`);
-      const osrmData = await osrmRes.json();
       if (osrmData.code !== 'Ok' || !osrmData.routes.length) throw new Error("Route not found");
 
       const routeGeometry = osrmData.routes[0].geometry; // GeoJSON LineString
