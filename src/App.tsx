@@ -23,7 +23,6 @@ import {
   X,
   CaretLeft,
   CaretRight,
-  Truck,
   ClockCounterClockwise as HistoryIcon,
   Brain,
   Info
@@ -185,19 +184,38 @@ function getSlicedCoordinates(coords: number[][], dists: number[], startDist: nu
   return result;
 }
 
+// Get the visual color for a segment based on its weather conditions
+const getSegmentColor = (seg: any) => {
+  const severity = seg.weather?.severity;
+  const condition = seg.weather?.condition || '';
+  
+  if (severity === 'critical') {
+    if (condition.includes('Snow') || condition.includes('Ice')) return 'var(--weather-extreme)';
+    return 'var(--weather-critical)';
+  }
+  if (severity === 'warning') {
+    return 'var(--weather-warning)';
+  }
+  return 'var(--weather-safe)';
+};
+
 function App() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapRef>(null);
   const accumulatedBearingRef = useRef<number>(NaN);
   
   // Theme and UI States
-  const theme = 'dark';
-  const [activeTab, setActiveTab] = useState<'route-weather' | 'fleet' | 'history' | 'ai-insights'>('route-weather');
+  const [theme, setTheme] = useState<'light' | 'dark' | 'night'>(() => {
+    const saved = localStorage.getItem('theme');
+    return (saved as 'light' | 'dark' | 'night') || 'dark';
+  });
+  const [activeTab, setActiveTab] = useState<'route-weather' | 'history' | 'ai-insights'>('route-weather');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [detailedCheckpoint, setDetailedCheckpoint] = useState<any | null>(null);
   const [hoveredMarkerId, setHoveredMarkerId] = useState<string | null>(null);
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [isSnapshotMode, setIsSnapshotMode] = useState(false);
+  const [showDepartureDropdown, setShowDepartureDropdown] = useState(false);
   
   // Route Inputs
   const [originInput, setOriginInput] = useState("San Francisco, CA");
@@ -223,46 +241,6 @@ function App() {
 
   // Client-Side History Persistence
   const [history, setHistory] = useState<any[]>([]);
-
-  // Mock Fleet Data
-  const [fleet] = useState([
-    { 
-      id: 'fleet-1', 
-      name: 'Freightliner M2', 
-      driver: 'Sarah Jenkins', 
-      status: 'En Route', 
-      origin: 'San Francisco, CA', 
-      dest: 'Lake Tahoe, CA', 
-      distanceRemaining: 195, 
-      eta: '3h 15m', 
-      weather: 'Clear', 
-      risk: 'safe' 
-    },
-    { 
-      id: 'fleet-2', 
-      name: 'Sprinter Cargo 208', 
-      driver: 'Marcus Vance', 
-      status: 'En Route', 
-      origin: 'Bangalore, India', 
-      dest: 'Mysore, India', 
-      distanceRemaining: 86, 
-      eta: '2h 10m', 
-      weather: 'Rain', 
-      risk: 'warning' 
-    },
-    { 
-      id: 'fleet-3', 
-      name: 'Volvo VNL Heavy', 
-      driver: 'Elena Rostova', 
-      status: 'Idle', 
-      origin: 'New York, NY', 
-      dest: 'Boston, MA', 
-      distanceRemaining: 0, 
-      eta: '-', 
-      weather: 'Snow', 
-      risk: 'critical' 
-    },
-  ]);
 
   const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -601,10 +579,19 @@ function App() {
 
   // Render Functions for Tab Contents
   const renderRouteWeatherTab = () => {
+    const departureOptions = [
+      { value: 0, label: 'Leave Now' },
+      { value: 1, label: 'In 1 Hour' },
+      { value: 2, label: 'In 2 Hours' },
+      { value: 4, label: 'In 4 Hours' },
+      { value: 6, label: 'In 6 Hours' },
+      { value: 12, label: 'In 12 Hours' }
+    ];
+
     return (
-      <>
+      <div className="flex flex-col gap-4">
         {/* Card 1: Route Inputs */}
-        <div className="dash-glass p-4 pointer-events-auto bg-zinc-950/85 border border-white/10 shadow-2xl rounded-2xl flex flex-col gap-3">
+        <div className="dash-glass p-4 bg-zinc-950/85 border border-white/10 shadow-2xl rounded-2xl flex flex-col gap-3">
           <h3 className="text-dash-label font-bold mb-1">Route Search</h3>
           <div className="flex items-center gap-3 bg-white/5 rounded-xl px-3 py-2 border border-white/5 focus-within:border-white/20 transition-colors">
             <MapPin size={16} className="text-white/40" />
@@ -628,26 +615,49 @@ function App() {
             />
           </div>
 
-          <div className="flex items-center gap-3 bg-white/5 rounded-xl px-3 py-2 border border-white/5 focus-within:border-white/20 transition-colors">
-            <Clock size={16} className="text-white/40" />
-            <select 
-              value={departureOffset} 
-              onChange={e => setDepartureOffset(Number(e.target.value))}
-              className="bg-transparent border-none outline-none text-xs w-full text-white cursor-pointer"
+          {/* Custom Styled Leave Now Dropdown */}
+          <div className="relative w-full">
+            <button 
+              onClick={() => setShowDepartureDropdown(!showDepartureDropdown)}
+              className="flex items-center justify-between bg-white/5 rounded-xl px-3 py-2 border border-white/5 focus:border-white/20 transition-colors w-full text-xs text-white cursor-pointer select-none text-left"
             >
-              <option value={0} className="bg-zinc-950 text-white">Leave Now</option>
-              <option value={1} className="bg-zinc-950 text-white">In 1 Hour</option>
-              <option value={2} className="bg-zinc-950 text-white">In 2 Hours</option>
-              <option value={4} className="bg-zinc-950 text-white">In 4 Hours</option>
-              <option value={6} className="bg-zinc-950 text-white">In 6 Hours</option>
-              <option value={12} className="bg-zinc-950 text-white">In 12 Hours</option>
-            </select>
+              <div className="flex items-center gap-3">
+                <Clock size={16} className="text-white/40" />
+                <span>{departureOptions.find(o => o.value === departureOffset)?.label || 'Leave Now'}</span>
+              </div>
+              <span className="text-[8px] opacity-40">▼</span>
+            </button>
+            
+            {showDepartureDropdown && (
+              <>
+                <div 
+                  className="fixed inset-0 z-40" 
+                  onClick={() => setShowDepartureDropdown(false)}
+                />
+                <div className="absolute left-0 right-0 mt-1 dash-glass bg-zinc-950/95 border border-white/10 shadow-2xl rounded-xl py-1.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150 max-h-48 overflow-y-auto no-scrollbar pointer-events-auto">
+                  {departureOptions.map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => {
+                        setDepartureOffset(opt.value);
+                        setShowDepartureDropdown(false);
+                      }}
+                      className={`w-full px-4 py-2 text-xs text-left text-white/80 hover:text-white hover:bg-white/5 flex items-center justify-between transition-colors cursor-pointer
+                        ${departureOffset === opt.value ? 'bg-white/5 text-white font-semibold' : ''}`}
+                    >
+                      <span>{opt.label}</span>
+                      {departureOffset === opt.value && <span className="text-[10px]">✓</span>}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
 
           <button 
             onClick={() => calculateRoute()}
             disabled={isLoading || routeState === 'animating'}
-            className="w-full bg-white text-zinc-950 font-bold py-2 px-4 rounded-xl text-xs hover:bg-white/90 transition-all duration-150 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-1 cursor-pointer"
+            className="w-full bg-white text-zinc-950 font-bold py-2 px-4 rounded-xl text-xs hover:bg-white/90 transition-all duration-150 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-1 cursor-pointer animate-in fade-in"
           >
             {isLoading ? (
               <>
@@ -661,7 +671,7 @@ function App() {
         {routeData ? (
           <>
             {/* Card 2: Slim Status Row */}
-            <div className="dash-glass px-4 py-3 pointer-events-auto bg-zinc-950/85 border border-white/10 shadow-2xl rounded-2xl flex justify-between items-center shrink-0">
+            <div className="dash-glass px-4 py-3 bg-zinc-950/85 border border-white/10 shadow-2xl rounded-2xl flex justify-between items-center shrink-0">
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#10b981]" />
                 <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">Optimal Stops</span>
@@ -676,7 +686,7 @@ function App() {
             </div>
 
             {/* Card 3: Hero Metric */}
-            <div className="dash-glass p-4 pointer-events-auto bg-zinc-950/85 border border-white/10 shadow-2xl rounded-2xl flex flex-col shrink-0">
+            <div className="dash-glass p-4 bg-zinc-950/85 border border-white/10 shadow-2xl rounded-2xl flex flex-col shrink-0">
               <h3 className="text-dash-label font-bold">Route Safety Index</h3>
               <div className="flex items-baseline gap-1 mt-1">
                 <span className="text-3xl font-light text-white">{100 - routeData.overallRisk}</span>
@@ -716,10 +726,51 @@ function App() {
               })()}
             </div>
 
+            {/* Consolidated Conditions Summary (Moved from bottom-right) */}
+            <div className="dash-glass p-4 bg-zinc-950/85 border border-white/10 shadow-2xl rounded-2xl flex flex-col gap-3 shrink-0">
+              <div>
+                <div className="text-[10px] uppercase font-bold tracking-widest text-white/40 mb-1">Conditions Summary</div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-light text-white">{routeData.overallRisk}%</span>
+                  <span className="text-[9px] text-white/40 uppercase tracking-widest font-bold font-sans">Overall Route Threat</span>
+                </div>
+              </div>
+              
+              <table className="w-full mt-1 border-collapse">
+                <thead>
+                  <tr className="text-left text-[8px] uppercase tracking-wider text-white/40 font-bold">
+                    <th className="pb-1.5 font-bold">Checkpoint</th>
+                    <th className="pb-1.5 font-bold">Temp</th>
+                    <th className="pb-1.5 text-right font-bold">Risk Delta</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    const originTemp = routeData.segments[0].weather.temperatureC;
+                    return routeData.segments.slice(1, 5).map((seg) => {
+                      const tempDelta = seg.weather.temperatureC - originTemp;
+                      const sign = tempDelta > 0 ? '+' : '';
+                      const deltaColor = tempDelta > 0 ? 'text-[#ef4444]' : tempDelta < 0 ? 'text-sky-400' : 'text-white/40';
+                      
+                      return (
+                        <tr key={seg.id} className="border-t border-white/5">
+                          <td className="py-2 text-[10px] text-white/80 font-semibold truncate max-w-[120px]">{seg.locationName.split('(')[0]}</td>
+                          <td className="py-2 text-[10px] font-mono text-white/90">{UNIT_CONFIG.formatTemp(seg.weather.temperatureC)}</td>
+                          <td className={`py-2 text-[10px] font-mono font-bold text-right ${deltaColor}`}>
+                            {tempDelta === 0 ? '0°C' : `${sign}${tempDelta}°C`}
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
+                </tbody>
+              </table>
+            </div>
+
             {/* Card 4: Weather Stops List */}
-            <div className="dash-glass p-4 pointer-events-auto bg-zinc-950/85 border border-white/10 shadow-2xl rounded-2xl flex-1 flex flex-col min-h-0 overflow-hidden">
+            <div className="dash-glass p-4 bg-zinc-950/85 border border-white/10 shadow-2xl rounded-2xl flex flex-col">
               <h3 className="text-dash-label font-bold mb-3">Weather Checkpoints</h3>
-              <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-2">
+              <div className="flex flex-col gap-2">
                 {routeData.segments.map((seg, idx) => {
                   const Icon = IconMap[seg.weather.icon] || Sun;
                   const isSafe = seg.weather.severity === 'safe';
@@ -769,96 +820,12 @@ function App() {
             </div>
           </>
         ) : (
-          <div className="dash-glass p-6 pointer-events-auto bg-zinc-950/85 border border-white/10 shadow-2xl rounded-2xl flex-1 flex flex-col items-center justify-center text-center text-white/40 gap-2">
+          <div className="dash-glass p-6 bg-zinc-950/85 border border-white/10 shadow-2xl rounded-2xl flex flex-col items-center justify-center text-center text-white/40 gap-2">
             <MapPin size={24} className="opacity-50" />
             <p className="text-xs max-w-[220px] leading-relaxed">Enter locations and trigger route mapping to obtain weather intelligence along your path.</p>
           </div>
         )}
-      </>
-    );
-  };
-
-  const renderFleetTab = () => {
-    const onlineVehicles = fleet.filter(v => v.risk === 'safe').length;
-    const offlineVehicles = fleet.filter(v => v.risk !== 'safe').length;
-
-    return (
-      <>
-        {/* Card 1: Slim Status Overview */}
-        <div className="dash-glass px-4 py-3 pointer-events-auto bg-zinc-950/85 border border-white/10 shadow-2xl rounded-2xl flex justify-between items-center shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#10b981]" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">Online</span>
-            <span className="text-xs font-mono font-bold text-white">{onlineVehicles}</span>
-          </div>
-          <div className="h-4 w-px bg-white/10" />
-          <div className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#ef4444]" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">Offline / Risk</span>
-            <span className="text-xs font-mono font-bold text-white">{offlineVehicles}</span>
-          </div>
-        </div>
-
-        {/* Card 2: Fleet Scrollable List */}
-        <div className="dash-glass p-4 pointer-events-auto bg-zinc-950/85 border border-white/10 shadow-2xl rounded-2xl flex-1 flex flex-col min-h-0 overflow-hidden">
-          <h3 className="text-dash-label font-bold mb-3">Active Logistics</h3>
-          <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-3">
-            {fleet.map((vehicle) => {
-              const isSafe = vehicle.risk === 'safe';
-              return (
-                <div 
-                  key={vehicle.id}
-                  onClick={() => {
-                    if (vehicle.status === 'En Route') {
-                      setOriginInput(vehicle.origin);
-                      setDestInput(vehicle.dest);
-                      calculateRoute(vehicle.origin, vehicle.dest);
-                      setActiveTab('route-weather');
-                    }
-                  }}
-                  className="bg-white/[0.02] border border-white/5 hover:bg-white/[0.06] hover:border-white/10 p-3 rounded-xl transition-all duration-150 cursor-pointer flex flex-col gap-2"
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
-                        <Truck size={14} className="opacity-80" />
-                        {vehicle.name}
-                      </h4>
-                      <span className="text-[9px] text-white/40 mt-0.5 block">Driver: {vehicle.driver}</span>
-                    </div>
-                    <span className={`text-[8px] uppercase font-bold px-2 py-0.5 rounded-full border
-                      ${isSafe 
-                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' 
-                        : 'bg-rose-500/10 border-rose-500/20 text-rose-400'}`}>
-                      {vehicle.status}
-                    </span>
-                  </div>
-
-                  <div className="text-[10px] font-semibold text-white/60 flex items-center gap-1">
-                    <span>{vehicle.origin.split(',')[0]}</span>
-                    <span className="opacity-30">→</span>
-                    <span>{vehicle.dest.split(',')[0]}</span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/5 text-[9px] text-white/50">
-                    <div>
-                      <span className="block text-[7px] uppercase tracking-wider text-white/30">Weather</span>
-                      <span className="text-white flex items-center gap-1 mt-0.5">
-                        {vehicle.weather === 'Clear' ? <Sun size={10} /> : <CloudRain size={10} />}
-                        {vehicle.weather}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="block text-[7px] uppercase tracking-wider text-white/30">ETA</span>
-                      <span className="text-white mt-0.5 block">{vehicle.eta} ({vehicle.distanceRemaining} mi)</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </>
+      </div>
     );
   };
 
@@ -1078,7 +1045,7 @@ function App() {
   };
 
   return (
-    <div ref={containerRef} className={`relative w-full h-screen overflow-hidden text-white font-sans flex ${isSnapshotMode ? 'bg-transparent pointer-events-none snapshot-mode' : 'bg-[#0a0a0b]'}`}>
+    <div ref={containerRef} className={`relative w-full h-screen overflow-hidden text-[var(--color-dash-text)] font-sans flex ${theme === 'light' ? 'theme-light' : theme === 'night' ? 'theme-night' : ''} ${isSnapshotMode ? 'bg-transparent pointer-events-none snapshot-mode' : 'bg-[var(--color-bg-base)]'}`}>
       <style>
         {isSnapshotMode && `
           .maplibregl-ctrl-bottom-left, .maplibregl-ctrl-bottom-right, .maplibregl-ctrl-top-left, .maplibregl-ctrl-top-right {
@@ -1087,78 +1054,37 @@ function App() {
         `}
       </style>
 
-      {/* Floating Pill Top Navigation */}
-      {!isSnapshotMode && (
-        <div className="absolute top-6 left-1/2 -translate-x-1/2 z-20 flex items-center justify-between gap-6 px-6 py-2.5 rounded-full dash-glass bg-zinc-950/80 border border-white/10 shadow-2xl w-[90%] max-w-[800px] pointer-events-auto">
-          <div className="flex items-center gap-2 select-none">
-            <Brain size={18} weight="fill" className="text-white" />
-            <span className="text-[10px] font-bold uppercase tracking-widest text-white leading-none">RouteWeather</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            {(['route-weather', 'fleet', 'history', 'ai-insights'] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-4 py-1.5 rounded-full text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer select-none
-                  ${activeTab === tab 
-                    ? 'bg-white text-zinc-950 shadow-md font-bold' 
-                    : 'text-white/60 hover:text-white/90 hover:bg-white/5'}`}
-              >
-                {tab === 'route-weather' ? 'Route Planner' : tab === 'ai-insights' ? 'AI Insights' : tab}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Large Floating Route Map Title */}
-      {!isSnapshotMode && routeData && (
-        <div className="absolute top-24 left-[450px] z-10 pointer-events-none flex flex-col gap-2">
-          <h1 className="text-3xl font-light tracking-wide text-white drop-shadow">Weather Intelligence</h1>
-          <div className="flex items-center gap-2 pointer-events-auto">
-            <div className="dash-glass bg-zinc-950/80 border border-white/10 px-3 py-1 rounded-xl text-[9px] font-bold uppercase tracking-wider text-white/80 flex items-center gap-1.5 cursor-default">
-              <MapPin size={10} />
-              {routeData.originName.split(',')[0]} → {routeData.destName.split(',')[0]}
-            </div>
-            <div className="dash-glass bg-zinc-950/80 border border-white/10 px-3 py-1 rounded-xl text-[9px] font-bold uppercase tracking-wider text-white/80 flex items-center gap-1.5 cursor-default">
-              <Clock size={10} />
-              ETA {Math.round(routeData.totalTimeMins)}m ({Math.round(routeData.totalDistanceMi)} mi)
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Top right sharing triggers */}
       {!isSnapshotMode && routeData && (
         <div className="absolute top-6 right-6 z-20 flex gap-2 pointer-events-auto">
           <div className="relative">
             <button 
               onClick={() => setShowShareMenu(!showShareMenu)}
-              className="dash-glass px-4 py-2 text-xs font-bold flex items-center gap-2 shadow-2xl hover:bg-white/10 transition-colors text-white bg-zinc-950/80 border border-white/10 cursor-pointer"
+              className="dash-glass px-4 py-2 text-xs font-bold flex items-center gap-2 shadow-2xl hover:bg-white/10 transition-colors text-[var(--color-dash-text)] bg-zinc-950/80 border border-white/10 cursor-pointer"
             >
               <ShareNetwork size={14} />
               Share
             </button>
 
             {showShareMenu && (
-              <div className="absolute right-0 mt-2 w-48 dash-glass bg-zinc-950/95 border border-white/10 shadow-2xl rounded-xl py-1 z-30 animate-in fade-in slide-in-from-top-2 duration-150">
+              <div className="absolute right-0 mt-2 w-48 dash-glass bg-zinc-955/95 border border-white/10 shadow-2xl rounded-xl py-1 z-30 animate-in fade-in slide-in-from-top-2 duration-150">
                 <button 
                   onClick={handleCopyLink}
-                  className="w-full px-4 py-2.5 text-xs text-left text-white hover:bg-white/5 flex items-center gap-2 transition-colors cursor-pointer"
+                  className="w-full px-4 py-2.5 text-xs text-left text-[var(--color-dash-text)] hover:bg-white/5 flex items-center gap-2 transition-colors cursor-pointer"
                 >
                   <Link size={14} />
                   Copy Link
                 </button>
                 <button 
                   onClick={handleDownloadImage}
-                  className="w-full px-4 py-2.5 text-xs text-left text-white hover:bg-white/5 flex items-center gap-2 transition-colors cursor-pointer"
+                  className="w-full px-4 py-2.5 text-xs text-left text-[var(--color-dash-text)] hover:bg-white/5 flex items-center gap-2 transition-colors cursor-pointer"
                 >
                   <ImageIcon size={14} />
                   Save Image (PNG)
                 </button>
                 <button 
                   onClick={handleNativeShare}
-                  className="w-full px-4 py-2.5 text-xs text-left text-white hover:bg-white/5 flex items-center gap-2 transition-colors cursor-pointer"
+                  className="w-full px-4 py-2.5 text-xs text-left text-[var(--color-dash-text)] hover:bg-white/5 flex items-center gap-2 transition-colors cursor-pointer"
                 >
                   <Export size={14} />
                   Native Share
@@ -1169,6 +1095,7 @@ function App() {
         </div>
       )}
 
+      {/* Map Element */}
       <div className={`absolute inset-0 z-0 ${isSnapshotMode ? 'pointer-events-none' : ''}`}>
         <Map
           ref={mapRef}
@@ -1183,7 +1110,7 @@ function App() {
           style={{ width: '100%', height: '100%' }}
           mapStyle={getHybridMapStyle() as any}
         >
-          {/* Glowing Route Line Segments sliced along REAL road geometry */}
+          {/* Glowing Route Line Segments sliced along REAL road geometry, color-coded by weather */}
           {(routeState === 'animating' || routeState === 'visible') && routeData && routeData.segments.slice(0, -1).map((seg, i) => {
             const nextSeg = routeData.segments[i + 1];
             
@@ -1216,24 +1143,32 @@ function App() {
 
             return (
               <Source key={`source-${seg.id}`} id={`route-${seg.id}`} type="geojson" data={segmentGeoJson as any}>
-                {/* Subtle White Glow Underlay */}
+                {/* Weather-based Glow Underlay */}
                 <Layer
                   id={`route-line-${seg.id}`}
                   type="line"
                   paint={{
-                    'line-color': 'rgba(255, 255, 255, 0.25)',
-                    'line-width': 6,
-                    'line-blur': 2.5
+                    'line-color': getSegmentColor(seg),
+                    'line-width': 8,
+                    'line-opacity': 0.25,
+                    'line-blur': 3
+                  }}
+                  layout={{
+                    'line-cap': 'round',
+                    'line-join': 'round'
                   }}
                 />
-                {/* Core White Dashed Route Line */}
+                {/* Core Color-Coded Route Line */}
                 <Layer
                   id={`route-line-core-${seg.id}`}
                   type="line"
                   paint={{
-                    'line-color': '#ffffff',
-                    'line-width': 2,
-                    'line-dasharray': [2, 3]
+                    'line-color': getSegmentColor(seg),
+                    'line-width': 4
+                  }}
+                  layout={{
+                    'line-cap': 'round',
+                    'line-join': 'round'
                   }}
                 />
               </Source>
@@ -1251,17 +1186,6 @@ function App() {
             
             if (!currentVehiclePos) return null;
             
-            // Normalize bearing and accumulate to avoid 360 spin artifacts
-            let prevAccum = accumulatedBearingRef.current;
-            if (isNaN(prevAccum) || prevAccum === null || prevAccum === undefined) {
-              accumulatedBearingRef.current = currentBearing;
-            } else {
-              let diff = currentBearing - (prevAccum % 360);
-              if (diff > 180) diff -= 360;
-              if (diff < -180) diff += 360;
-              accumulatedBearingRef.current = prevAccum + diff;
-            }
-            
             return (
               <Marker
                 longitude={currentVehiclePos[0]}
@@ -1273,7 +1197,7 @@ function App() {
                   <div className="absolute w-8 h-8 bg-white border border-white rounded-full opacity-20 animate-ping"></div>
                   <div 
                     className="w-6 h-6 bg-white border-2 border-zinc-950 rounded-full flex items-center justify-center shadow-[0_0_10px_rgba(0,0,0,0.5)]"
-                    style={{ transform: `rotate(${accumulatedBearingRef.current}deg)` }}
+                    style={{ transform: `rotate(${currentBearing}deg)` }}
                   >
                     <svg className="w-3.5 h-3.5 text-zinc-950" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M12 2L4.5 20.29l.71.71L12 17l6.79 4 .71-.71z" />
@@ -1342,24 +1266,62 @@ function App() {
         </Map>
       </div>
 
-      {/* Transparent Sidebar Panel Stacker */}
+      {/* Unified Sidebar Panel */}
       {!isSnapshotMode && !isSidebarCollapsed && (
-        <div className="absolute left-6 top-24 bottom-6 w-[400px] z-20 flex flex-col pointer-events-none select-none animate-in fade-in slide-in-from-left-4 duration-300 gap-4 min-h-0">
-          <div className="flex items-center justify-between pointer-events-auto shrink-0 pr-2">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Dashboard Panel</span>
-            <button 
-              onClick={() => setIsSidebarCollapsed(true)}
-              className="p-1 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors cursor-pointer"
-              title="Collapse Sidebar"
-            >
-              <CaretLeft size={16} />
-            </button>
+        <div className="absolute top-6 left-6 bottom-6 w-[420px] max-w-[calc(100vw-3rem)] z-20 flex flex-col pointer-events-none select-none animate-in fade-in slide-in-from-left-4 duration-300 shadow-2xl rounded-2xl border border-white/10 bg-zinc-950/85 backdrop-blur-xl overflow-hidden">
+          {/* Header */}
+          <div className="p-4 border-b border-white/10 flex items-center justify-between shrink-0 pointer-events-auto">
+            <div className="flex items-center gap-2 select-none">
+              <Brain size={18} weight="fill" className="text-white" />
+              <span className="font-bold tracking-tight text-white text-sm">RouteWeather</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              {/* Theme Toggle Button */}
+              <button 
+                onClick={() => {
+                  const nextTheme = theme === 'dark' ? 'night' : theme === 'night' ? 'light' : 'dark';
+                  setTheme(nextTheme);
+                  localStorage.setItem('theme', nextTheme);
+                }}
+                className="p-1.5 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors cursor-pointer"
+                title={`Theme: ${theme}`}
+              >
+                <Sun size={16} />
+              </button>
+              
+              {/* Collapse Button */}
+              <button 
+                onClick={() => setIsSidebarCollapsed(true)}
+                className="p-1.5 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors cursor-pointer"
+                title="Collapse Sidebar"
+              >
+                <CaretLeft size={16} />
+              </button>
+            </div>
           </div>
-          
-          {activeTab === 'route-weather' && renderRouteWeatherTab()}
-          {activeTab === 'fleet' && renderFleetTab()}
-          {activeTab === 'history' && renderHistoryTab()}
-          {activeTab === 'ai-insights' && renderAIInsightsTab()}
+
+          {/* Navigation Tabs */}
+          <div className="flex border-b border-white/10 shrink-0 bg-white/[0.02] pointer-events-auto">
+            {(['route-weather', 'history', 'ai-insights'] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`flex-1 py-3 text-[10px] font-bold uppercase tracking-wider text-center border-b-2 transition-all cursor-pointer select-none
+                  ${activeTab === tab 
+                    ? 'border-white text-white bg-white/[0.02]' 
+                    : 'border-transparent text-white/40 hover:text-white hover:bg-white/[0.01]'}`}
+              >
+                {tab === 'route-weather' ? 'Route Planner' : tab === 'ai-insights' ? 'AI Insights' : 'History'}
+              </button>
+            ))}
+          </div>
+
+          {/* Scrollable Content Area */}
+          <div className="flex-1 overflow-y-auto no-scrollbar p-4 flex flex-col gap-4 min-h-0 pointer-events-auto">
+            {activeTab === 'route-weather' && renderRouteWeatherTab()}
+            {activeTab === 'history' && renderHistoryTab()}
+            {activeTab === 'ai-insights' && renderAIInsightsTab()}
+          </div>
         </div>
       )}
 
@@ -1367,7 +1329,7 @@ function App() {
       {!isSnapshotMode && isSidebarCollapsed && (
         <button 
           onClick={() => setIsSidebarCollapsed(false)}
-          className="absolute top-24 left-6 z-20 w-10 h-10 dash-glass flex items-center justify-center shadow-2xl hover:bg-white/15 transition-all active:scale-95 text-white cursor-pointer animate-in fade-in bg-zinc-950/80 border border-white/10"
+          className="absolute top-6 left-6 z-20 w-10 h-10 dash-glass flex items-center justify-center shadow-2xl hover:bg-white/15 transition-all active:scale-95 text-white cursor-pointer animate-in fade-in bg-zinc-950/80 border border-white/10"
           title="Expand Sidebar"
         >
           <CaretRight size={18} />
@@ -1392,49 +1354,6 @@ function App() {
           >
             −
           </button>
-        </div>
-      )}
-
-      {/* Bottom Right Conditions Summary */}
-      {!isSnapshotMode && routeData && (
-        <div className="absolute bottom-6 right-6 z-10 w-[360px] dash-glass p-5 pointer-events-auto bg-zinc-950/85 border border-white/10 rounded-2xl shadow-2xl flex flex-col gap-3 animate-in fade-in slide-in-from-bottom-4 duration-300">
-          <div>
-            <div className="text-[10px] uppercase font-bold tracking-widest text-white/40 mb-1">Conditions Summary</div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-light text-white">{routeData.overallRisk}%</span>
-              <span className="text-[9px] text-white/40 uppercase tracking-widest font-bold">Overall Route Threat</span>
-            </div>
-          </div>
-          
-          <table className="w-full mt-1 border-collapse">
-            <thead>
-              <tr className="text-left text-[8px] uppercase tracking-wider text-white/40 font-bold">
-                <th className="pb-1.5 font-bold">Checkpoint</th>
-                <th className="pb-1.5 font-bold">Temp</th>
-                <th className="pb-1.5 text-right font-bold">Risk Delta</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(() => {
-                const originTemp = routeData.segments[0].weather.temperatureC;
-                return routeData.segments.slice(1, 5).map((seg) => {
-                  const tempDelta = seg.weather.temperatureC - originTemp;
-                  const sign = tempDelta > 0 ? '+' : '';
-                  const deltaColor = tempDelta > 0 ? 'text-[#ef4444]' : tempDelta < 0 ? 'text-sky-400' : 'text-white/40';
-                  
-                  return (
-                    <tr key={seg.id} className="border-t border-white/5">
-                      <td className="py-2 text-[10px] text-white/80 font-semibold truncate max-w-[120px]">{seg.locationName.split('(')[0]}</td>
-                      <td className="py-2 text-[10px] font-mono text-white/90">{UNIT_CONFIG.formatTemp(seg.weather.temperatureC)}</td>
-                      <td className={`py-2 text-[10px] font-mono font-bold text-right ${deltaColor}`}>
-                        {tempDelta === 0 ? '0°C' : `${sign}${tempDelta}°C`}
-                      </td>
-                    </tr>
-                  );
-                });
-              })()}
-            </tbody>
-          </table>
         </div>
       )}
 
