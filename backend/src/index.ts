@@ -96,4 +96,80 @@ app.get('/api/route', async (c) => {
   }
 })
 
+app.get('/api/geocode', async (c) => {
+  const q = c.req.query('q')
+  if (!q) {
+    return c.json({ error: 'Query parameter "q" is required' }, 400)
+  }
+  
+  // Clean the query string
+  const query = q.trim();
+  if (query.length < 2) {
+    return c.json({ error: 'Query too short' }, 400)
+  }
+
+  // Define cache key based on normalized query
+  const cacheUrl = new URL(c.req.url);
+  cacheUrl.pathname = '/api/geocode';
+  cacheUrl.search = `?q=${encodeURIComponent(query.toLowerCase())}`;
+  
+  const cacheKey = new Request(cacheUrl.toString());
+  // Cloudflare Workers caches.default API
+  const cache = caches.default;
+
+  try {
+    // Check cache
+    const cachedResponse = await cache.match(cacheKey);
+    if (cachedResponse) {
+      // Adding a custom header just for observability
+      const newResponse = new Response(cachedResponse.body, cachedResponse);
+      newResponse.headers.set('X-Cache', 'HIT');
+      return newResponse;
+    }
+
+    // Call Nominatim
+    const nominatimUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`;
+    const res = await fetch(nominatimUrl, {
+      headers: {
+        'User-Agent': 'RouteWeatherApp/1.0 (support@routeweather.com)',
+        'Referer': 'https://routeweather.com'
+      }
+    });
+
+    if (!res.ok) {
+       const text = await res.text();
+       throw new Error(`Nominatim failed: ${res.status} ${text}`);
+    }
+
+    const data = await res.json() as NominatimResponse[];
+    if (!data || data.length === 0) {
+      return c.json({ error: 'Location not found' }, 404);
+    }
+
+    const result = {
+      name: query,
+      latitude: parseFloat(data[0].lat),
+      longitude: parseFloat(data[0].lon),
+      displayName: data[0].display_name
+    };
+
+    // Create response
+    const responseToCache = new Response(JSON.stringify(result), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, max-age=86400', // Cache for 24 hours
+        'Access-Control-Allow-Origin': '*'
+      }
+    });
+    
+    // Store in cache
+    c.executionCtx.waitUntil(cache.put(cacheKey, responseToCache.clone()));
+
+    return responseToCache;
+  } catch (err: any) {
+    return c.json({ error: err.message }, 500);
+  }
+})
+
 export default app
