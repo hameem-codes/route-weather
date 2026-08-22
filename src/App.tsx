@@ -640,9 +640,9 @@ function App() {
               style={{ zIndex: 40 }}
             >
               <div className="relative flex items-center justify-center pointer-events-none">
-                <div className="absolute w-8 h-8 bg-bg-base border border-border-subtle rounded-full opacity-30 animate-ping"></div>
+                <div className="absolute w-8 h-8 bg-white border border-white rounded-full opacity-30 animate-ping"></div>
                 <div 
-                  className="w-5 h-5 bg-bg-base border border-border-subtle rounded-full flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.8)] border-2 border-bg-base transition-transform duration-100 ease-linear"
+                  className="w-5 h-5 bg-white border-2 border-zinc-200 rounded-full flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.8)] transition-transform duration-100 ease-linear"
                   style={{ transform: `rotate(${accumulatedBearingRef.current}deg)` }}
                 >
                    <NavigationArrow size={12} weight="fill" className="text-zinc-900 -rotate-45" />
