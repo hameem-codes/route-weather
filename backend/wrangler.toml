@@ -1,3 +1,6 @@
 name = "routeweather-api"
 main = "src/index.ts"
 compatibility_date = "2024-02-08"
+
+[vars]
+ALLOWED_ORIGIN = "http://localhost:5173"

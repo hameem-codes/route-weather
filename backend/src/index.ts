@@ -14,11 +14,21 @@ const sendError = (c: any, code: string, message: string, status: number = 400) 
   }, status);
 };
 
+const getAllowedOrigin = (c: any) => {
+  const allowedEnv = (c.env as any)?.ALLOWED_ORIGIN || 'http://localhost:5173';
+  const origins = allowedEnv.split(',').map((o: string) => o.trim());
+  const reqOrigin = c.req.header('Origin');
+  if (reqOrigin && origins.includes(reqOrigin)) {
+    return reqOrigin;
+  }
+  return origins[0];
+};
+
 // 1. Strict CORS Configuration
-app.use('/api/*', cors({
-  origin: 'http://localhost:5173', // Restrict to the exact frontend origin
+app.use('/api/*', (c, next) => cors({
+  origin: getAllowedOrigin(c),
   allowMethods: ['GET', 'POST', 'OPTIONS'],
-}))
+})(c, next))
 
 // 2. Maximum Request Size limit (10KB)
 app.use('/api/*', async (c, next) => {
@@ -119,7 +129,7 @@ app.get('/api/route', async (c) => {
       headers: {
         'Content-Type': 'application/json',
         'Cache-Control': 'public, max-age=86400',
-        'Access-Control-Allow-Origin': 'http://localhost:5173'
+        'Access-Control-Allow-Origin': getAllowedOrigin(c)
       }
     });
 
@@ -185,7 +195,7 @@ app.get('/api/geocode', async (c) => {
       headers: {
         'Content-Type': 'application/json',
         'Cache-Control': 'public, max-age=86400',
-        'Access-Control-Allow-Origin': 'http://localhost:5173'
+        'Access-Control-Allow-Origin': getAllowedOrigin(c)
       }
     });
     
@@ -250,7 +260,7 @@ app.post('/api/weather/route', async (c) => {
     const lats = checkpoints.map(c => c.coordinates[1]).join(',');
     const lngs = checkpoints.map(c => c.coordinates[0]).join(',');
     
-    const meteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lngs}&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,wind_speed_10m,wind_direction_10m,relative_humidity_2m,visibility,cloud_cover,weather_code,uv_index&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto`;
+    const meteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lngs}&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,wind_speed_10m,wind_direction_10m,relative_humidity_2m,visibility,cloud_cover,weather_code,uv_index&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto`;
 
     const cacheUrl = new URL(c.req.url);
     const cacheKeyStr = `${cacheUrl.origin}/api/weather/route?hash=${lats.substring(0,10)}-${lngs.substring(0,10)}`;
@@ -334,11 +344,11 @@ app.post('/api/weather/route', async (c) => {
         ...cp,
         weather: {
           condition,
-          temperatureF: Math.round(hourly.temperature_2m[hourIndex]),
+          temperatureC: Math.round(hourly.temperature_2m[hourIndex]),
           severity,
           icon,
           rainProbability: hourly.precipitation_probability[hourIndex],
-          feelsLikeF: Math.round(hourly.apparent_temperature[hourIndex]),
+          feelsLikeC: Math.round(hourly.apparent_temperature[hourIndex]),
           humidity: hourly.relative_humidity_2m[hourIndex],
           windSpeedMph: Math.round(windSpeed),
           windDirection: degreesToDirection(hourly.wind_direction_10m[hourIndex]),
@@ -460,7 +470,7 @@ app.post('/api/route-weather', async (c) => {
     if (cachedRoute) {
       routeResult = await cachedRoute.json();
     } else {
-      const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${originData.lng},${originData.lat};${destData.lng},${destData.lat}?overview=full&geometries=geojson`;
+      const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${originData.lng},${originData.lat};${destData.lng},${destData.lat}?overview=full&geometries=geojson&steps=true`;
       const osrmRes = await fetchWithTimeout(osrmUrl, {
         headers: {
           'User-Agent': 'RouteWeatherApp/1.0 (support@routeweather.com)',
@@ -480,7 +490,8 @@ app.post('/api/route-weather', async (c) => {
       routeResult = {
         geometry: route.geometry,
         distanceMeters: route.distance,
-        durationSeconds: route.duration
+        durationSeconds: route.duration,
+        steps: route.legs?.[0]?.steps || []
       };
 
       c.executionCtx.waitUntil(cache.put(routeCacheKey, new Response(JSON.stringify(routeResult), {
@@ -488,7 +499,7 @@ app.post('/api/route-weather', async (c) => {
       })));
     }
 
-    const { geometry, distanceMeters, durationSeconds } = routeResult;
+    const { geometry, distanceMeters, durationSeconds, steps } = routeResult;
 
     // 3. Route sampling
     const coords = geometry.coordinates;
@@ -500,29 +511,24 @@ app.post('/api/route-weather', async (c) => {
     const totalDistanceMi = cumulativeDistances[cumulativeDistances.length - 1];
     const totalTimeMins = Math.round(durationSeconds / 60);
 
-    let numSegments = Math.max(3, Math.min(10, Math.ceil(totalDistanceMi / 30)));
-    const checkpoints = [];
-    for (let i = 0; i < numSegments; i++) {
-      const dist = (i / (numSegments - 1)) * totalDistanceMi;
+    // Sample dense candidate points (up to 30) along the route
+    let numCandidates = Math.max(10, Math.min(30, Math.ceil(totalDistanceMi / 10)));
+    const candidates = [];
+    for (let i = 0; i < numCandidates; i++) {
+      const dist = (i / (numCandidates - 1)) * totalDistanceMi;
       const pt = along(routeLine, dist, { units: 'miles' });
-      const timeMins = Math.round((i / (numSegments - 1)) * totalTimeMins);
-      
-      let locName = `Checkpoint ${i}`;
-      if (i === 0) locName = originData.name;
-      if (i === numSegments - 1) locName = destData.name;
-      
-      checkpoints.push({
-        id: `seg_${i}`,
+      const timeMins = Math.round((i / (numCandidates - 1)) * totalTimeMins);
+      candidates.push({
+        index: i,
         distanceFromStartMi: dist,
         timeFromStartMins: timeMins,
-        locationName: locName,
         coordinates: pt.geometry.coordinates
       });
     }
 
     // 4. Open-Meteo weather
-    const lats = checkpoints.map(c => c.coordinates[1]).join(',');
-    const lngs = checkpoints.map(c => c.coordinates[0]).join(',');
+    const lats = candidates.map(c => c.coordinates[1]).join(',');
+    const lngs = candidates.map(c => c.coordinates[0]).join(',');
     
     const weatherCacheKeyStr = `${reqUrl.origin}/api/weather/internal?hash=${lats.substring(0,20)}-${lngs.substring(0,20)}`;
     const weatherCacheKey = new Request(weatherCacheKeyStr);
@@ -533,7 +539,7 @@ app.post('/api/route-weather', async (c) => {
     if (cachedWeather) {
       meteoData = await cachedWeather.json();
     } else {
-      const meteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lngs}&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,wind_speed_10m,wind_direction_10m,relative_humidity_2m,visibility,cloud_cover,weather_code,uv_index&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto`;
+      const meteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lngs}&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,wind_speed_10m,wind_direction_10m,relative_humidity_2m,visibility,cloud_cover,weather_code,uv_index&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto`;
       const meteoRes = await fetchWithTimeout(meteoUrl, {}, 8000);
       
       if (meteoRes.status === 429) throw new Error('RATE_LIMIT_EXCEEDED');
@@ -547,7 +553,7 @@ app.post('/api/route-weather', async (c) => {
     }
 
     // 5. Weather normalization
-    const results = checkpoints.map((cp, idx) => {
+    const candidatesWithWeather = candidates.map((cp, idx) => {
       const locationData = Array.isArray(meteoData) ? meteoData[idx] : meteoData;
       const arrivalTime = new Date(startTime.getTime() + cp.timeFromStartMins * 60000);
       
@@ -607,11 +613,11 @@ app.post('/api/route-weather', async (c) => {
         ...cp,
         weather: {
           condition,
-          temperatureF: Math.round(hourly.temperature_2m[hourIndex]),
+          temperatureC: Math.round(hourly.temperature_2m[hourIndex]),
           severity,
           icon, 
           rainProbability: hourly.precipitation_probability[hourIndex],
-          feelsLikeF: Math.round(hourly.apparent_temperature[hourIndex]),
+          feelsLikeC: Math.round(hourly.apparent_temperature[hourIndex]),
           humidity: hourly.relative_humidity_2m[hourIndex],
           windSpeedMph: Math.round(windSpeed),
           windDirection: degreesToDirection(hourly.wind_direction_10m[hourIndex]),
@@ -626,6 +632,162 @@ app.post('/api/route-weather', async (c) => {
         eta: arrivalTime.toISOString()
       };
     });
+
+    // Smart Checkpoint Selection
+    let maxCheckpoints = 5;
+    if (totalDistanceMi < 50) {
+      maxCheckpoints = 3;
+    } else if (totalDistanceMi < 150) {
+      maxCheckpoints = 5;
+    } else if (totalDistanceMi < 400) {
+      maxCheckpoints = 7;
+    } else {
+      maxCheckpoints = 10;
+    }
+
+    const selectedIndices: number[] = [0, numCandidates - 1]; // Start and End are always selected
+    const candidateScores = candidatesWithWeather.map((c, idx) => {
+      if (idx === 0 || idx === numCandidates - 1) return { idx, score: -1 };
+      
+      const prev = candidatesWithWeather[idx - 1];
+      const tempDiff = Math.abs(c.weather.temperatureC - prev.weather.temperatureC);
+      const rainChange = (c.weather.rainProbability > 20) !== (prev.weather.rainProbability > 20);
+      const severityChange = c.weather.severity !== prev.weather.severity;
+      const windDiff = Math.abs(c.weather.windSpeedMph - prev.weather.windSpeedMph);
+      const visibilityDiff = Math.abs(c.weather.visibilityMi - prev.weather.visibilityMi);
+
+      let score = 0;
+      score += tempDiff * 3;
+      if (rainChange) score += 25;
+      if (severityChange) score += 20;
+      score += windDiff * 0.5;
+      score += visibilityDiff * 4;
+      return { idx, score };
+    });
+
+    let minDistanceIndex = Math.max(1, Math.floor(numCandidates / maxCheckpoints));
+    while (selectedIndices.length < maxCheckpoints && minDistanceIndex > 0) {
+      let bestIdx = -1;
+      let highestScore = -1;
+      
+      for (const item of candidateScores) {
+        if (selectedIndices.includes(item.idx)) continue;
+        
+        let tooClose = false;
+        for (const selIdx of selectedIndices) {
+          if (Math.abs(item.idx - selIdx) < minDistanceIndex) {
+            tooClose = true;
+            break;
+          }
+        }
+        
+        if (!tooClose && item.score > highestScore) {
+          highestScore = item.score;
+          bestIdx = item.idx;
+        }
+      }
+      
+      if (bestIdx !== -1) {
+        selectedIndices.push(bestIdx);
+      } else {
+        minDistanceIndex--;
+      }
+    }
+
+    selectedIndices.sort((a, b) => a - b);
+
+    // OSRM Steps for road name lookup
+    const osrmSteps = steps || [];
+    const findNearestStepName = (lng: number, lat: number) => {
+      if (osrmSteps.length === 0) return '';
+      let minDistance = Infinity;
+      let nearestStepName = '';
+      for (const step of osrmSteps) {
+        if (!step.name || step.name.trim() === '') continue;
+        const stepLng = step.maneuver.location[0];
+        const stepLat = step.maneuver.location[1];
+        const dist = Math.pow(stepLng - lng, 2) + Math.pow(stepLat - lat, 2);
+        if (dist < minDistance) {
+          minDistance = dist;
+          nearestStepName = step.name;
+        }
+      }
+      return nearestStepName;
+    };
+
+    // Helper for cached reverse geocoding of city/town names
+    const getCachedCity = async (lat: number, lng: number) => {
+      const cacheLat = lat.toFixed(2);
+      const cacheLng = lng.toFixed(2);
+      const reverseCacheKey = new Request(`${reqUrl.origin}/api/reverse-geocode/internal?lat=${cacheLat}&lng=${cacheLng}`);
+      
+      const cached = await cache.match(reverseCacheKey);
+      if (cached) {
+        const data = await cached.json() as any;
+        return data.city;
+      }
+      
+      try {
+        const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=12`;
+        await new Promise(r => setTimeout(r, 200)); 
+        const res = await fetchWithTimeout(url, {
+          headers: {
+            'User-Agent': 'RouteWeatherApp/1.0 (support@routeweather.com)',
+            'Referer': 'https://routeweather.com'
+          }
+        }, 5000);
+        if (res.ok) {
+          const data = await res.json() as any;
+          const city = data.address?.city || data.address?.town || data.address?.village || data.address?.suburb || data.address?.county || '';
+          
+          c.executionCtx.waitUntil(cache.put(reverseCacheKey, new Response(JSON.stringify({ city }), {
+            headers: { 'Cache-Control': 'public, max-age=86400' }
+          })));
+          
+          return city;
+        }
+      } catch (e) {
+        console.error("Reverse geocoding error:", e);
+      }
+      return '';
+    };
+
+    const results = [];
+    for (let i = 0; i < selectedIndices.length; i++) {
+      const originalIdx = selectedIndices[i];
+      const cp = candidatesWithWeather[originalIdx];
+      
+      let locName = `Checkpoint ${i}`;
+      if (i === 0) {
+        locName = originData.name;
+      } else if (i === selectedIndices.length - 1) {
+        locName = destData.name;
+      } else {
+        const city = await getCachedCity(cp.coordinates[1], cp.coordinates[0]);
+        const road = findNearestStepName(cp.coordinates[0], cp.coordinates[1]);
+        
+        if (city && road) {
+          locName = `${city} (via ${road})`;
+        } else if (city) {
+          locName = city;
+        } else if (road) {
+          locName = `Near ${road}`;
+        } else {
+          locName = `Checkpoint ${i}`;
+        }
+      }
+      
+      results.push({
+        id: `seg_${i}`,
+        distanceFromStartMi: cp.distanceFromStartMi,
+        timeFromStartMins: cp.timeFromStartMins,
+        locationName: locName,
+        coordinates: cp.coordinates,
+        weather: cp.weather,
+        alert: cp.alert,
+        eta: cp.eta
+      });
+    }
 
     // 6. Final response construction
     const finalResult = {
@@ -645,7 +807,7 @@ app.post('/api/route-weather', async (c) => {
       headers: {
         'Content-Type': 'application/json',
         'Cache-Control': 'public, max-age=900', // 15 mins
-        'Access-Control-Allow-Origin': 'http://localhost:5173'
+        'Access-Control-Allow-Origin': getAllowedOrigin(c)
       }
     });
 
