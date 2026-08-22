@@ -824,7 +824,7 @@ function App() {
 
           {/* Timeline (Scrollable) */}
           {routeData && (
-            <div className={`pointer-events-auto bg-zinc-900/80 backdrop-blur-xl border border-zinc-800 rounded-2xl shadow-2xl relative flex flex-col transition-all duration-300 ${isTimelineExpanded ? 'flex-1' : ''}`}>
+            <div className={`pointer-events-auto bg-zinc-900/80 backdrop-blur-xl border border-zinc-800 rounded-2xl shadow-2xl relative flex flex-col transition-all duration-300 ${isTimelineExpanded ? 'flex-1 min-h-0' : ''}`}>
               {/* Header */}
               <div 
                 className={`flex items-center justify-between p-4 px-5 cursor-pointer hover:bg-zinc-800/30 transition-colors ${isTimelineExpanded ? 'border-b border-zinc-800/50' : ''}`}
@@ -841,7 +841,7 @@ function App() {
               
               {/* Content */}
               {isTimelineExpanded && (
-                <div className="flex-1 overflow-y-auto no-scrollbar p-5 pt-6">
+                <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar p-5 pt-6">
                   <div className="relative pl-6 pb-4">
                     {/* Connecting line */}
                     <div className="absolute top-4 bottom-4 left-[11px] w-[2px] bg-zinc-800 rounded-full"></div>
