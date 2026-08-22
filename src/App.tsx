@@ -21,7 +21,8 @@ import {
   Link,
   Export,
   CaretUp,
-  CaretDown
+  CaretDown,
+  Moon
 } from '@phosphor-icons/react'
 import * as maplibregl from 'maplibre-gl';
 import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
@@ -189,6 +190,7 @@ function App() {
   const [routeState, setRouteState] = useState<'hidden' | 'animating' | 'visible'>('hidden');
   const [progress, setProgress] = useState(0); // 0 to 1
   const [isTimelineExpanded, setIsTimelineExpanded] = useState(true);
+  const [theme, setTheme] = useState<'dark' | 'night'>('dark');
 
   // Marker & Share Interaction State
   const [hoveredMarkerId, setHoveredMarkerId] = useState<string | null>(null);
@@ -489,7 +491,7 @@ function App() {
   };
 
   return (
-    <div ref={containerRef} className={`relative w-full h-screen overflow-hidden text-zinc-50 font-sans flex ${isSnapshotMode ? 'bg-transparent pointer-events-none snapshot-mode' : 'bg-zinc-950'}`}>
+    <div ref={containerRef} className={`relative w-full h-screen overflow-hidden text-text-primary font-sans flex ${theme === 'night' ? 'theme-night' : ''} ${isSnapshotMode ? 'bg-transparent pointer-events-none snapshot-mode' : 'bg-bg-base'}`}>
       <style>
         {isSnapshotMode && `
           .maplibregl-ctrl-bottom-left, .maplibregl-ctrl-bottom-right, .maplibregl-ctrl-top-left, .maplibregl-ctrl-top-right {
@@ -534,8 +536,13 @@ function App() {
               return null;
             }
 
-            const glowColor = severity === 'safe' ? '#3b82f6' : severity === 'warning' ? '#f59e0b' : severity === 'critical' ? '#d946ef' : '#a855f7';
-            const coreColor = severity === 'safe' ? '#93c5fd' : severity === 'warning' ? '#fcd34d' : severity === 'critical' ? '#f0abfc' : '#d8b4fe';
+            const glowColor = theme === 'night' 
+              ? (severity === 'safe' ? '#0ea5e9' : severity === 'warning' ? '#fbbf24' : severity === 'critical' ? '#ec4899' : '#c084fc')
+              : (severity === 'safe' ? '#3b82f6' : severity === 'warning' ? '#f59e0b' : severity === 'critical' ? '#d946ef' : '#a855f7');
+              
+            const coreColor = theme === 'night'
+              ? (severity === 'safe' ? '#7dd3fc' : severity === 'warning' ? '#fde047' : severity === 'critical' ? '#f472b6' : '#d8b4fe')
+              : (severity === 'safe' ? '#93c5fd' : severity === 'warning' ? '#fcd34d' : severity === 'critical' ? '#f0abfc' : '#d8b4fe');
 
             const segmentGeoJson = {
               type: 'FeatureCollection',
@@ -624,9 +631,9 @@ function App() {
               style={{ zIndex: 40 }}
             >
               <div className="relative flex items-center justify-center pointer-events-none">
-                <div className="absolute w-8 h-8 bg-zinc-50 rounded-full opacity-30 animate-ping"></div>
+                <div className="absolute w-8 h-8 bg-bg-base border border-border-subtle rounded-full opacity-30 animate-ping"></div>
                 <div 
-                  className="w-5 h-5 bg-zinc-50 rounded-full flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.8)] border-2 border-zinc-900 transition-transform duration-100 ease-linear"
+                  className="w-5 h-5 bg-bg-base border border-border-subtle rounded-full flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.8)] border-2 border-bg-base transition-transform duration-100 ease-linear"
                   style={{ transform: `rotate(${accumulatedBearingRef.current}deg)` }}
                 >
                    <NavigationArrow size={12} weight="fill" className="text-zinc-900 -rotate-45" />
@@ -668,12 +675,12 @@ function App() {
                   {/* Tooltip (Hover State) - Hidden in Snapshot Mode */}
                   {!isSnapshotMode && isHovered && !isSelected && (
                     <div className="absolute bottom-full mb-2 -translate-x-1/2 left-1/2 flex flex-col items-center animate-in fade-in zoom-in-95 duration-150 pointer-events-none z-50">
-                      <div className="bg-zinc-900/95 backdrop-blur-xl border border-zinc-700/50 rounded-xl p-3 shadow-2xl min-w-[140px] text-center">
+                      <div className="bg-bg-surface backdrop-blur-xl border border-border-subtle rounded-xl p-3 shadow-2xl min-w-[140px] text-center">
                         <div className="font-semibold text-sm mb-1 truncate max-w-[120px]">{seg.locationName}</div>
                         <div className="text-2xl font-bold font-mono">{seg.weather.temperatureF}°</div>
-                        <div className="text-xs text-zinc-400 mt-1">{seg.weather.condition}</div>
+                        <div className="text-xs text-text-muted mt-1">{seg.weather.condition}</div>
                         {seg.weather.rainProbability > 0 && (
-                          <div className="text-xs text-blue-400 mt-1 font-medium">{seg.weather.rainProbability}% Rain</div>
+                          <div className="text-xs text-weather-safe mt-1 font-medium">{seg.weather.rainProbability}% Rain</div>
                         )}
                       </div>
                       <div className="w-0 h-0 border-l-[6px] border-r-[6px] border-t-[6px] border-transparent border-t-zinc-700/50 -mt-[1px]"></div>
@@ -690,12 +697,12 @@ function App() {
                       setSelectedMarker(seg);
                     }}
                     className={`flex flex-col items-center justify-center -translate-y-2 transition-transform duration-300
-                      ${isSafe ? 'text-blue-400' : isWarning ? 'text-amber-400' : 'text-fuchsia-400'}
+                      ${isSafe ? 'text-weather-safe' : isWarning ? 'text-weather-warning' : 'text-weather-critical'}
                       ${(isHovered || isSelected) && !isSnapshotMode ? 'scale-125' : (!isSnapshotMode ? 'hover:scale-110 cursor-pointer' : '')}
                       animate-in fade-in zoom-in`}
                   >
-                    <div className={`bg-zinc-900/90 backdrop-blur-md border rounded-lg p-1.5 shadow-lg flex items-center justify-center mb-1 transition-colors
-                      ${isSelected && !isSnapshotMode ? 'border-current' : 'border-zinc-700/50'}`}>
+                    <div className={`bg-bg-surface backdrop-blur-md border rounded-lg p-1.5 shadow-lg flex items-center justify-center mb-1 transition-colors
+                      ${isSelected && !isSnapshotMode ? 'border-current' : 'border-border-subtle'}`}>
                        <seg.weather.icon size={22} weight={isSelected && !isSnapshotMode ? "fill" : "duotone"} />
                     </div>
                     <div className="w-1.5 h-1.5 rounded-full bg-current shadow-[0_0_10px_currentColor]"></div>
@@ -710,28 +717,28 @@ function App() {
       {/* Snapshot Overlay Graphic (Only visible in Snapshot Mode) */}
       {isSnapshotMode && routeData && (
         <div className="absolute inset-0 z-20 pointer-events-none flex flex-col justify-between p-8 md:p-12">
-          <div className="bg-zinc-900/80 backdrop-blur-3xl border border-zinc-800/80 rounded-[2rem] p-8 max-w-[26rem] shadow-2xl self-start mt-4 ml-4">
+          <div className="bg-bg-surface backdrop-blur-3xl border border-border-subtle rounded-[2rem] p-8 max-w-[26rem] shadow-2xl self-start mt-4 ml-4">
             <h1 className="text-[2.5rem] leading-tight font-bold tracking-tight text-white mb-6">
               {originInput.split(',')[0]}<br/>
-              <span className="text-zinc-500 font-medium tracking-normal text-3xl">to </span>
+              <span className="text-text-primary0 font-medium tracking-normal text-3xl">to </span>
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-400 to-purple-500 text-4xl">{destInput.split(',')[0]}</span>
             </h1>
             
-            <div className="flex items-center gap-8 mt-2 pt-6 border-t border-zinc-800/80">
+            <div className="flex items-center gap-8 mt-2 pt-6 border-t border-border-subtle">
                <div>
-                 <div className="text-xs font-semibold text-zinc-400 mb-1.5 uppercase tracking-widest">Est. Travel Time</div>
+                 <div className="text-xs font-semibold text-text-muted mb-1.5 uppercase tracking-widest">Est. Travel Time</div>
                  <div className="text-2xl font-bold text-white tracking-tight">{Math.floor(routeData.totalTimeMins / 60)}h {routeData.totalTimeMins % 60}m</div>
                </div>
-               <div className="w-px h-10 bg-zinc-800"></div>
+               <div className="w-px h-10 bg-bg-elevated"></div>
                <div>
-                 <div className="text-xs font-semibold text-zinc-400 mb-1.5 uppercase tracking-widest">Distance</div>
+                 <div className="text-xs font-semibold text-text-muted mb-1.5 uppercase tracking-widest">Distance</div>
                  <div className="text-2xl font-bold text-white tracking-tight">{Math.round(routeData.totalDistanceMi)} mi</div>
                </div>
             </div>
           </div>
           
-          <div className="self-end bg-zinc-950/80 backdrop-blur-md border border-zinc-800/50 rounded-full px-5 py-2 flex items-center gap-2 shadow-xl">
-             <div className="w-3 h-3 rounded-full bg-blue-500 animate-pulse shadow-[0_0_10px_rgba(59,130,246,0.8)]"></div>
+          <div className="self-end bg-bg-surface backdrop-blur-md border border-border-subtle rounded-full px-5 py-2 flex items-center gap-2 shadow-xl">
+             <div className="w-3 h-3 rounded-full bg-weather-safe animate-pulse shadow-[0_0_10px_rgba(59,130,246,0.8)]"></div>
              <span className="font-bold tracking-tight text-white">RouteWeather</span>
           </div>
         </div>
@@ -742,41 +749,51 @@ function App() {
         <div className="absolute top-0 left-0 w-full md:w-[400px] h-full flex flex-col p-4 md:p-6 z-10 pointer-events-none">
           
           {/* Input Panel */}
-          <div className="pointer-events-auto bg-zinc-900/80 backdrop-blur-xl border border-zinc-800 rounded-2xl p-5 mb-4 shadow-2xl flex-shrink-0 relative">
+          <div className="pointer-events-auto bg-bg-surface backdrop-blur-xl border border-border-subtle rounded-2xl p-5 mb-4 shadow-2xl flex-shrink-0 relative">
             
-            {/* Share Button & Dropdown */}
-            <div className="absolute top-4 right-4 z-20">
+            {/* Share & Theme Dropdowns */}
+            <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
               <button 
-                onClick={() => setShowShareMenu(!showShareMenu)}
-                className={`p-2 rounded-xl transition-colors ${showShareMenu ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/50'}`}
-                title="Share Route"
+                onClick={() => setTheme(theme === 'dark' ? 'night' : 'dark')}
+                className={`p-2 rounded-xl transition-colors text-text-muted hover:text-text-primary hover:bg-bg-elevated hover:bg-bg-overlay`}
+                title={theme === 'dark' ? "Switch to Night Mode" : "Switch to Dark Mode"}
               >
-                <ShareNetwork size={20} />
+                {theme === 'dark' ? <Moon size={20} /> : <Sun size={20} />}
               </button>
               
-              {showShareMenu && (
-                <div className="absolute right-0 mt-2 w-48 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
-                  <button onClick={handleDownloadImage} className="w-full text-left px-4 py-3 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 flex items-center gap-3 transition-colors">
+              <div className="relative">
+                <button 
+                  onClick={() => setShowShareMenu(!showShareMenu)}
+                  className={`p-2 rounded-xl transition-colors ${showShareMenu ? 'bg-bg-elevated text-text-primary' : 'text-text-muted hover:text-text-primary hover:bg-bg-elevated hover:bg-bg-overlay'}`}
+                  title="Share Route"
+                >
+                  <ShareNetwork size={20} />
+                </button>
+                
+                {showShareMenu && (
+                  <div className="absolute right-0 mt-2 w-48 bg-bg-surface border border-border-subtle rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+                  <button onClick={handleDownloadImage} className="w-full text-left px-4 py-3 text-sm text-text-secondary hover:bg-bg-elevated hover:text-text-primary flex items-center gap-3 transition-colors">
                     <ImageIcon size={18} />
                     Share Image
                   </button>
-                  <div className="h-px bg-zinc-800/50 mx-2"></div>
-                  <button onClick={handleCopyLink} className="w-full text-left px-4 py-3 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 flex items-center gap-3 transition-colors">
+                  <div className="h-px bg-bg-elevated hover:bg-bg-overlay mx-2"></div>
+                  <button onClick={handleCopyLink} className="w-full text-left px-4 py-3 text-sm text-text-secondary hover:bg-bg-elevated hover:text-text-primary flex items-center gap-3 transition-colors">
                     <Link size={18} />
                     Copy Map Link
                   </button>
-                  <div className="h-px bg-zinc-800/50 mx-2"></div>
-                  <button onClick={handleNativeShare} className="w-full text-left px-4 py-3 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 flex items-center gap-3 transition-colors">
+                  <div className="h-px bg-bg-elevated hover:bg-bg-overlay mx-2"></div>
+                  <button onClick={handleNativeShare} className="w-full text-left px-4 py-3 text-sm text-text-secondary hover:bg-bg-elevated hover:text-text-primary flex items-center gap-3 transition-colors">
                     <Export size={18} />
                     Share
                   </button>
                 </div>
-              )}
+                </div>
+              </div>
             </div>
 
             <div className="flex flex-col gap-3 mt-1">
-              <div className="flex items-center gap-3 bg-zinc-800/50 rounded-xl px-4 py-3 border border-transparent focus-within:border-zinc-700 transition-colors mr-10">
-                <MapPin size={20} className="text-zinc-400" />
+              <div className="flex items-center gap-3 bg-bg-elevated hover:bg-bg-overlay rounded-xl px-4 py-3 border border-transparent focus-within:border-border-strong transition-colors mr-10">
+                <MapPin size={20} className="text-text-muted" />
                 <input 
                   type="text" 
                   value={originInput}
@@ -785,9 +802,9 @@ function App() {
                   placeholder="Starting location..."
                 />
               </div>
-              <div className="w-[1px] h-3 bg-zinc-700 ml-6"></div>
-              <div className="flex items-center gap-3 bg-zinc-800/50 rounded-xl px-4 py-3 border border-transparent focus-within:border-zinc-700 transition-colors">
-                <Flag size={20} className="text-zinc-400" />
+              <div className="w-[1px] h-3 bg-border-strong ml-6"></div>
+              <div className="flex items-center gap-3 bg-bg-elevated hover:bg-bg-overlay rounded-xl px-4 py-3 border border-transparent focus-within:border-border-strong transition-colors">
+                <Flag size={20} className="text-text-muted" />
                 <input 
                   type="text" 
                   value={destInput}
@@ -798,19 +815,19 @@ function App() {
               </div>
             </div>
             
-            <div className="mt-5 pt-4 border-t border-zinc-800 flex justify-between items-end">
+            <div className="mt-5 pt-4 border-t border-border-subtle flex justify-between items-end">
               <div>
                 <div className="text-3xl font-bold tracking-tight">
                   {routeData ? `${Math.floor(routeData.totalTimeMins / 60)}h ${routeData.totalTimeMins % 60}m` : '--h --m'}
                 </div>
-                <div className="text-sm text-zinc-400 font-mono mt-1">
+                <div className="text-sm text-text-muted font-mono mt-1">
                   {routeData ? `${Math.round(routeData.totalDistanceMi)} mi` : '-- mi'}
                 </div>
               </div>
               <button 
                 onClick={() => calculateRoute()}
                 disabled={isLoading || routeState === 'animating'}
-                className="bg-zinc-100 text-zinc-900 font-medium px-4 py-2 rounded-full text-sm hover:bg-white transition-colors active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="bg-accent-bg text-accent-text font-medium px-4 py-2 rounded-full text-sm hover:bg-accent-bg opacity-90 transition-colors active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {isLoading ? (
                   <>
@@ -824,15 +841,15 @@ function App() {
 
           {/* Timeline (Scrollable) */}
           {routeData && (
-            <div className={`pointer-events-auto bg-zinc-900/80 backdrop-blur-xl border border-zinc-800 rounded-2xl shadow-2xl relative flex flex-col transition-all duration-300 ${isTimelineExpanded ? 'flex-1 min-h-0' : ''}`}>
+            <div className={`pointer-events-auto bg-bg-surface backdrop-blur-xl border border-border-subtle rounded-2xl shadow-2xl relative flex flex-col transition-all duration-300 ${isTimelineExpanded ? 'flex-1 min-h-0' : ''}`}>
               {/* Header */}
               <div 
-                className={`flex items-center justify-between p-4 px-5 cursor-pointer hover:bg-zinc-800/30 transition-colors ${isTimelineExpanded ? 'border-b border-zinc-800/50' : ''}`}
+                className={`flex items-center justify-between p-4 px-5 cursor-pointer hover:bg-bg-overlay transition-colors ${isTimelineExpanded ? 'border-b border-border-subtle' : ''}`}
                 onClick={() => setIsTimelineExpanded(!isTimelineExpanded)}
               >
-                <h2 className="text-sm font-semibold uppercase tracking-widest text-zinc-300">Weather Route</h2>
+                <h2 className="text-sm font-semibold uppercase tracking-widest text-text-secondary">Weather Route</h2>
                 <button 
-                  className="p-1 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
+                  className="p-1 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-elevated transition-colors"
                   title={isTimelineExpanded ? "Collapse Timeline" : "Expand Timeline"}
                 >
                   {isTimelineExpanded ? <CaretDown size={18} weight="bold" /> : <CaretUp size={18} weight="bold" />}
@@ -844,7 +861,7 @@ function App() {
                 <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar p-5 pt-6">
                   <div className="relative pl-6 pb-4">
                     {/* Connecting line */}
-                    <div className="absolute top-4 bottom-4 left-[11px] w-[2px] bg-zinc-800 rounded-full"></div>
+                    <div className="absolute top-4 bottom-4 left-[11px] w-[2px] bg-bg-elevated rounded-full"></div>
                 
                 <div className="flex flex-col gap-8">
                   {routeData.segments.map((seg) => {
@@ -859,28 +876,28 @@ function App() {
                     return (
                       <div key={seg.id} className={`relative transition-opacity duration-500 ${isReached ? 'opacity-100' : 'opacity-30'}`}>
                         {/* Node */}
-                        <div className={`absolute -left-6 w-3 h-3 rounded-full border-2 border-zinc-900 mt-1.5 z-10 
-                          ${isSafe ? 'bg-blue-500' : isWarning ? 'bg-amber-500' : 'bg-fuchsia-500'}`}>
+                        <div className={`absolute -left-6 w-3 h-3 rounded-full border-2 border-bg-base mt-1.5 z-10 
+                          ${isSafe ? 'bg-weather-safe' : isWarning ? 'bg-weather-warning' : 'bg-weather-critical'}`}>
                         </div>
 
                         <div className="flex flex-col gap-1">
                           <div className="flex justify-between items-baseline">
-                            <h3 className="font-medium text-zinc-100 truncate pr-2 max-w-[150px]">{seg.locationName}</h3>
-                            <span className="text-xs font-mono text-zinc-500 flex-shrink-0">+{seg.timeFromStartMins}m</span>
+                            <h3 className="font-medium text-text-primary truncate pr-2 max-w-[150px]">{seg.locationName}</h3>
+                            <span className="text-xs font-mono text-text-primary0 flex-shrink-0">+{seg.timeFromStartMins}m</span>
                           </div>
                           
                           <div className="flex items-center gap-4 mt-2">
                             <div className="flex items-center gap-2">
-                              <Icon size={24} className={isSafe ? 'text-blue-400' : isWarning ? 'text-amber-400' : 'text-fuchsia-400'} weight="duotone" />
+                              <Icon size={24} className={isSafe ? 'text-weather-safe' : isWarning ? 'text-weather-warning' : 'text-weather-critical'} weight="duotone" />
                               <span className="font-mono text-lg">{seg.weather.temperatureF}°</span>
                             </div>
-                            <span className="text-sm text-zinc-400">{seg.weather.condition}</span>
+                            <span className="text-sm text-text-muted">{seg.weather.condition}</span>
                           </div>
 
                           {seg.alert && (
                             <div className={`mt-3 inline-flex items-center px-3 py-1 rounded-full text-xs font-medium self-start
-                              ${isWarning ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' : 
-                              'bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/20'}`}>
+                              ${isWarning ? 'bg-weather-warning-bg text-weather-warning border border-weather-warning-bg' : 
+                              'bg-weather-critical-bg text-weather-critical border border-weather-critical-bg'}`}>
                               {seg.alert}
                             </div>
                           )}
@@ -888,7 +905,7 @@ function App() {
                           {/* Interactive button to show details */}
                           <button 
                             onClick={() => setSelectedMarker(seg)}
-                            className="mt-3 text-xs font-medium text-zinc-400 hover:text-zinc-200 self-start transition-colors px-2 py-1 -ml-2 rounded-md hover:bg-zinc-800/50"
+                            className="mt-3 text-xs font-medium text-text-muted hover:text-text-secondary self-start transition-colors px-2 py-1 -ml-2 rounded-md hover:bg-bg-elevated hover:bg-bg-overlay"
                           >
                             More info
                           </button>
@@ -911,18 +928,18 @@ function App() {
           onClick={() => setSelectedMarker(null)}
         >
           <div 
-            className="bg-zinc-900 border border-zinc-800 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 max-h-[85vh] flex flex-col"
+            className="bg-bg-surface border border-border-subtle rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 max-h-[85vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="flex justify-between items-start p-6 pb-4 bg-zinc-900 z-10 sticky top-0 border-b border-zinc-800/50">
+            <div className="flex justify-between items-start p-6 pb-4 bg-bg-surface z-10 sticky top-0 border-b border-border-subtle">
               <div>
-                <h2 className="text-xl font-bold text-zinc-100">{selectedMarker.locationName}</h2>
-                <p className="text-sm text-zinc-400 mt-1">Arrival: {selectedMarker.timeFromStartMins} mins from start</p>
+                <h2 className="text-xl font-bold text-text-primary">{selectedMarker.locationName}</h2>
+                <p className="text-sm text-text-muted mt-1">Arrival: {selectedMarker.timeFromStartMins} mins from start</p>
               </div>
               <button 
                 onClick={() => setSelectedMarker(null)}
-                className="p-2 rounded-full hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors"
+                className="p-2 rounded-full hover:bg-bg-elevated text-text-muted hover:text-text-primary transition-colors"
               >
                 <X size={20} />
               </button>
@@ -935,49 +952,49 @@ function App() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <div className={`p-4 rounded-2xl ${
-                    selectedMarker.weather.severity === 'safe' ? 'bg-blue-500/10 text-blue-400' : 
-                    selectedMarker.weather.severity === 'warning' ? 'bg-amber-500/10 text-amber-400' : 'bg-fuchsia-500/10 text-fuchsia-400'
+                    selectedMarker.weather.severity === 'safe' ? 'bg-weather-safe-bg text-weather-safe' : 
+                    selectedMarker.weather.severity === 'warning' ? 'bg-weather-warning-bg text-weather-warning' : 'bg-weather-critical-bg text-weather-critical'
                   }`}>
                     <selectedMarker.weather.icon size={48} weight="duotone" />
                   </div>
                   <div>
                     <div className="text-5xl font-bold font-mono tracking-tight">{selectedMarker.weather.temperatureF}°</div>
-                    <div className="text-lg text-zinc-300 font-medium">{selectedMarker.weather.condition}</div>
+                    <div className="text-lg text-text-secondary font-medium">{selectedMarker.weather.condition}</div>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-sm text-zinc-400 mb-1">Feels Like</div>
-                  <div className="text-2xl font-mono text-zinc-200">{selectedMarker.weather.feelsLikeF}°</div>
+                  <div className="text-sm text-text-muted mb-1">Feels Like</div>
+                  <div className="text-2xl font-mono text-text-secondary">{selectedMarker.weather.feelsLikeF}°</div>
                 </div>
               </div>
 
               {/* Grid Stats */}
               <div className="grid grid-cols-2 gap-3">
-                <div className="bg-zinc-800/50 rounded-xl p-3 flex items-center gap-3 border border-zinc-800/80">
-                  <Wind size={20} className="text-zinc-400" />
+                <div className="bg-bg-elevated hover:bg-bg-overlay rounded-xl p-3 flex items-center gap-3 border border-border-subtle">
+                  <Wind size={20} className="text-text-muted" />
                   <div>
-                    <div className="text-xs text-zinc-500">Wind</div>
+                    <div className="text-xs text-text-primary0">Wind</div>
                     <div className="text-sm font-medium">{selectedMarker.weather.windSpeedMph} mph {selectedMarker.weather.windDirection}</div>
                   </div>
                 </div>
-                <div className="bg-zinc-800/50 rounded-xl p-3 flex items-center gap-3 border border-zinc-800/80">
-                  <Drop size={20} className="text-blue-400" />
+                <div className="bg-bg-elevated hover:bg-bg-overlay rounded-xl p-3 flex items-center gap-3 border border-border-subtle">
+                  <Drop size={20} className="text-weather-safe" />
                   <div>
-                    <div className="text-xs text-zinc-500">Precipitation</div>
+                    <div className="text-xs text-text-primary0">Precipitation</div>
                     <div className="text-sm font-medium">{selectedMarker.weather.precipitationIn}" / {selectedMarker.weather.rainProbability}%</div>
                   </div>
                 </div>
-                <div className="bg-zinc-800/50 rounded-xl p-3 flex items-center gap-3 border border-zinc-800/80">
-                  <Eye size={20} className="text-zinc-400" />
+                <div className="bg-bg-elevated hover:bg-bg-overlay rounded-xl p-3 flex items-center gap-3 border border-border-subtle">
+                  <Eye size={20} className="text-text-muted" />
                   <div>
-                    <div className="text-xs text-zinc-500">Visibility</div>
+                    <div className="text-xs text-text-primary0">Visibility</div>
                     <div className="text-sm font-medium">{selectedMarker.weather.visibilityMi} mi</div>
                   </div>
                 </div>
-                <div className="bg-zinc-800/50 rounded-xl p-3 flex items-center gap-3 border border-zinc-800/80">
-                  <CloudCheck size={20} className="text-zinc-400" />
+                <div className="bg-bg-elevated hover:bg-bg-overlay rounded-xl p-3 flex items-center gap-3 border border-border-subtle">
+                  <CloudCheck size={20} className="text-text-muted" />
                   <div>
-                    <div className="text-xs text-zinc-500">Cloud Cover</div>
+                    <div className="text-xs text-text-primary0">Cloud Cover</div>
                     <div className="text-sm font-medium">{selectedMarker.weather.cloudCover}%</div>
                   </div>
                 </div>
@@ -987,8 +1004,8 @@ function App() {
               <div className="space-y-3">
                 {selectedMarker.alert && (
                   <div className={`p-4 rounded-xl border flex items-start gap-3 ${
-                    selectedMarker.weather.severity === 'warning' ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' : 
-                    'bg-fuchsia-500/10 border-fuchsia-500/20 text-fuchsia-400'
+                    selectedMarker.weather.severity === 'warning' ? 'bg-weather-warning-bg border-weather-warning-bg text-weather-warning' : 
+                    'bg-weather-critical-bg border-weather-critical-bg text-weather-critical'
                   }`}>
                     <Warning size={20} weight="fill" className="mt-0.5 shrink-0" />
                     <div>
@@ -998,14 +1015,14 @@ function App() {
                   </div>
                 )}
                 
-                <div className="bg-zinc-800/30 rounded-xl p-4 border border-zinc-800/50">
-                  <div className="font-medium text-sm text-zinc-300 mb-2">Road Risk Assessment</div>
-                  <div className="text-sm text-zinc-400 leading-relaxed">{selectedMarker.weather.riskAssessment}</div>
+                <div className="bg-bg-overlay rounded-xl p-4 border border-border-subtle">
+                  <div className="font-medium text-sm text-text-secondary mb-2">Road Risk Assessment</div>
+                  <div className="text-sm text-text-muted leading-relaxed">{selectedMarker.weather.riskAssessment}</div>
                 </div>
 
-                <div className="bg-zinc-800/30 rounded-xl p-4 border border-zinc-800/50">
-                  <div className="font-medium text-sm text-zinc-300 mb-2">Forecast</div>
-                  <div className="text-sm text-zinc-400 leading-relaxed">{selectedMarker.weather.forecastText}</div>
+                <div className="bg-bg-overlay rounded-xl p-4 border border-border-subtle">
+                  <div className="font-medium text-sm text-text-secondary mb-2">Forecast</div>
+                  <div className="text-sm text-text-muted leading-relaxed">{selectedMarker.weather.forecastText}</div>
                 </div>
               </div>
 

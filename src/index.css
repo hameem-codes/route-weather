@@ -3,20 +3,129 @@
 @theme {
   --font-sans: "Geist", "Inter", sans-serif;
   --font-mono: "Geist Mono", monospace;
+
+  /* Theme variables */
+  --color-bg-base: var(--bg-base);
+  --color-bg-surface: var(--bg-surface);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-bg-overlay: var(--bg-overlay);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+
+  --color-border-subtle: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
+
+  --color-accent: var(--accent);
+  --color-accent-bg: var(--accent-bg);
+  --color-accent-text: var(--accent-text);
+
+  /* Weather Colors */
+  --color-weather-safe: var(--weather-safe);
+  --color-weather-safe-bg: var(--weather-safe-bg);
+  --color-weather-warning: var(--weather-warning);
+  --color-weather-warning-bg: var(--weather-warning-bg);
+  --color-weather-critical: var(--weather-critical);
+  --color-weather-critical-bg: var(--weather-critical-bg);
+  --color-weather-extreme: var(--weather-extreme);
+  --color-weather-extreme-bg: var(--weather-extreme-bg);
 }
 
 :root {
-  background-color: #09090b; /* zinc-950 */
-  color: #fafa0b;
+  /* Dark Mode (Zinc tones) */
+  --bg-base: #09090b; /* zinc-950 */
+  --bg-surface: rgba(24, 24, 27, 0.8); /* zinc-900/80 */
+  --bg-elevated: rgba(39, 39, 42, 0.8); /* zinc-800/80 */
+  --bg-overlay: rgba(24, 24, 27, 0.5); /* zinc-900/50 */
+
+  --text-primary: #fafafa; /* zinc-50 */
+  --text-secondary: #e4e4e7; /* zinc-200 */
+  --text-muted: #a1a1aa; /* zinc-400 */
+
+  --border-subtle: rgba(63, 63, 70, 0.5); /* zinc-700/50 */
+  --border-strong: rgba(63, 63, 70, 1); /* zinc-700 */
+
+  --accent: #e4e4e7; /* zinc-200 */
+  --accent-bg: rgba(255, 255, 255, 1); /* white */
+  --accent-text: #09090b; /* zinc-950 */
+
+  /* Weather (Base Dark) */
+  --weather-safe: #3b82f6; /* blue-500 */
+  --weather-safe-bg: rgba(59, 130, 246, 0.1);
+  --weather-warning: #f59e0b; /* amber-500 */
+  --weather-warning-bg: rgba(245, 158, 11, 0.1);
+  --weather-critical: #d946ef; /* fuchsia-500 */
+  --weather-critical-bg: rgba(217, 70, 239, 0.1);
+  --weather-extreme: #a855f7; /* purple-500 */
+  --weather-extreme-bg: rgba(168, 85, 247, 0.1);
+}
+
+.theme-night {
+  /* Night Mode (Deep slate/indigo tones) */
+  --bg-base: #020617; /* slate-950 */
+  --bg-surface: rgba(15, 23, 42, 0.8); /* slate-900/80 */
+  --bg-elevated: rgba(30, 41, 59, 0.8); /* slate-800/80 */
+  --bg-overlay: rgba(15, 23, 42, 0.5); /* slate-900/50 */
+
+  --text-primary: #f8fafc; /* slate-50 */
+  --text-secondary: #e2e8f0; /* slate-200 */
+  --text-muted: #94a3b8; /* slate-400 */
+
+  --border-subtle: rgba(51, 65, 85, 0.5); /* slate-700/50 */
+  --border-strong: rgba(51, 65, 85, 1); /* slate-700 */
+
+  --accent: #818cf8; /* indigo-400 */
+  --accent-bg: rgba(99, 102, 241, 0.2); /* indigo-500/20 */
+  --accent-text: #818cf8; /* indigo-400 */
+
+  /* Weather (Cinematic Night) */
+  --weather-safe: #0ea5e9; /* sky-500 */
+  --weather-safe-bg: rgba(14, 165, 233, 0.1);
+  --weather-warning: #fbbf24; /* amber-400 */
+  --weather-warning-bg: rgba(251, 191, 36, 0.1);
+  --weather-critical: #ec4899; /* pink-500 */
+  --weather-critical-bg: rgba(236, 72, 153, 0.1);
+  --weather-extreme: #c084fc; /* purple-400 */
+  --weather-extreme-bg: rgba(192, 132, 252, 0.1);
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  background-color: var(--bg-base);
+  color: var(--text-primary);
 }
 
 #root {
   width: 100%;
   height: 100%;
+}
+
+/* Map Night Mode Overlay Effect */
+.map-night-overlay {
+  mix-blend-mode: overlay;
+  background: rgba(2, 6, 23, 0.4);
+  pointer-events: none;
+  z-index: 5;
+}
+.theme-night .maplibregl-canvas {
+  filter: brightness(0.9) sepia(0.2) hue-rotate(180deg) saturate(1.5);
+}
+
+/* Custom Scrollbar to match theme */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
 }
