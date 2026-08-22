@@ -26,6 +26,7 @@ import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&ur
 import Map, { Source, Layer, Marker } from 'react-map-gl/maplibre';
 import type { MapRef } from 'react-map-gl/maplibre';
 import along from '@turf/along';
+import bearing from '@turf/bearing';
 import distance from '@turf/distance';
 import { point } from '@turf/helpers';
 import { toPng } from 'html-to-image';
@@ -166,6 +167,7 @@ function getSlicedCoordinates(coords: number[][], dists: number[], startDist: nu
 function App() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapRef>(null);
+  const accumulatedBearingRef = useRef(0);
   
   // Input State
   const [originInput, setOriginInput] = useState("San Francisco, CA");
@@ -573,25 +575,43 @@ function App() {
           {!isSnapshotMode && routeData && (routeState === 'animating' || routeState === 'visible') && (() => {
             const currentDistance = routeData.totalDistanceMi * progress;
             let currentVehiclePos: [number, number] | null = null;
+            let currentBearing = 0;
+            const coords = routeData.routeLine.geometry.coordinates;
             
             if (progress >= 1) {
               currentVehiclePos = routeData.segments[routeData.segments.length - 1].coordinates as [number, number];
+              if (coords.length >= 2) {
+                currentBearing = bearing(point(coords[coords.length - 2]), point(coords[coords.length - 1]));
+              }
             } else if (progress > 0) {
               for (let i = 1; i < routeData.cumulativeDistances.length; i++) {
                 if (routeData.cumulativeDistances[i] >= currentDistance) {
+                  const p1 = coords[i-1];
+                  const p2 = coords[i];
                   const ratio = (currentDistance - routeData.cumulativeDistances[i-1]) / (routeData.cumulativeDistances[i] - routeData.cumulativeDistances[i-1]);
                   currentVehiclePos = [
-                    routeData.routeLine.geometry.coordinates[i-1][0] + (routeData.routeLine.geometry.coordinates[i][0] - routeData.routeLine.geometry.coordinates[i-1][0]) * ratio,
-                    routeData.routeLine.geometry.coordinates[i-1][1] + (routeData.routeLine.geometry.coordinates[i][1] - routeData.routeLine.geometry.coordinates[i-1][1]) * ratio
+                    p1[0] + (p2[0] - p1[0]) * ratio,
+                    p1[1] + (p2[1] - p1[1]) * ratio
                   ];
+                  currentBearing = bearing(point(p1), point(p2));
                   break;
                 }
               }
             } else {
               currentVehiclePos = routeData.segments[0].coordinates as [number, number];
+              if (coords.length >= 2) {
+                currentBearing = bearing(point(coords[0]), point(coords[1]));
+              }
             }
             
             if (!currentVehiclePos) return null;
+            
+            // Normalize bearing to prevent 180-degree flips and accumulate
+            let prevAccum = accumulatedBearingRef.current;
+            let diff = currentBearing - (prevAccum % 360);
+            if (diff > 180) diff -= 360;
+            if (diff < -180) diff += 360;
+            accumulatedBearingRef.current = prevAccum + diff;
             
             return (
               <Marker
@@ -602,8 +622,11 @@ function App() {
             >
               <div className="relative flex items-center justify-center pointer-events-none">
                 <div className="absolute w-8 h-8 bg-zinc-50 rounded-full opacity-30 animate-ping"></div>
-                <div className="w-5 h-5 bg-zinc-50 rounded-full flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.8)] border-2 border-zinc-900">
-                   <NavigationArrow size={12} weight="fill" className="text-zinc-900 rotate-45 translate-x-[1px] -translate-y-[1px]" />
+                <div 
+                  className="w-5 h-5 bg-zinc-50 rounded-full flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.8)] border-2 border-zinc-900 transition-transform duration-100 ease-linear"
+                  style={{ transform: `rotate(${accumulatedBearingRef.current}deg)` }}
+                >
+                   <NavigationArrow size={12} weight="fill" className="text-zinc-900 -rotate-45" />
                 </div>
               </div>
             </Marker>
