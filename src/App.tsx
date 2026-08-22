@@ -25,9 +25,7 @@ import * as maplibregl from 'maplibre-gl';
 import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import Map, { Source, Layer, Marker } from 'react-map-gl/maplibre';
 import type { MapRef } from 'react-map-gl/maplibre';
-import length from '@turf/length';
 import along from '@turf/along';
-import lineSlice from '@turf/line-slice';
 import distance from '@turf/distance';
 import { point } from '@turf/helpers';
 import { toPng } from 'html-to-image';
@@ -609,7 +607,8 @@ function App() {
                 </div>
               </div>
             </Marker>
-          )}
+            );
+          })()}
 
           {/* Markers for Weather Points */}
           {routeData && routeData.segments.map((seg) => {
