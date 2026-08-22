@@ -789,6 +789,7 @@ function App() {
                 </div>
               )}
             </div>
+          </div>
             <div className="flex flex-col gap-3 mt-1">
               <div className="flex items-center gap-3 bg-bg-elevated hover:bg-bg-overlay rounded-xl px-4 py-3 border border-transparent focus-within:border-border-strong transition-colors mr-10">
                 <MapPin size={20} className="text-text-muted" />
