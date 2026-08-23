@@ -1,4 +1,4 @@
-﻿export function getWeatherSeverity(wmoCode: number, windSpeed: number) {
+export function getWeatherSeverity(wmoCode: number, windSpeed: number) {
   let condition = "Clear";
   let severity = "safe";
   let icon = "Sun";
@@ -15,20 +15,21 @@
     if (wmoCode === 65) { condition = "Heavy Rain"; icon = "CloudLightning"; alert = "Heavy Downpour"; riskAssessment = "High risk of hydroplaning."; }
   }
   else if (wmoCode >= 71 && wmoCode <= 77) {
-    condition = "Snow"; icon = "Snowflake"; severity = "critical"; riskAssessment = "Severe winter conditions."; alert = "Snow/Ice on roads";
+    condition = "Snow"; icon = "Snowflake"; severity = "extreme"; riskAssessment = "Severe winter conditions."; alert = "Snow/Ice on roads";
   }
   else if (wmoCode >= 80 && wmoCode <= 82) {
     condition = "Rain Showers"; icon = "CloudRain"; severity = "warning";
   }
   else if (wmoCode >= 85 && wmoCode <= 86) {
-    condition = "Snow Showers"; icon = "CloudSnow"; severity = "critical"; alert = "Snow Showers";
+    condition = "Snow Showers"; icon = "CloudSnow"; severity = "extreme"; alert = "Snow Showers";
   }
   else if (wmoCode >= 95) {
     condition = "Thunderstorm"; icon = "CloudLightning"; severity = "critical"; alert = "Thunderstorm Warning"; riskAssessment = "Dangerous driving conditions.";
   }
 
   if (windSpeed > 30) {
-    severity = "critical"; alert = "High Wind Warning"; riskAssessment = "Dangerous crosswinds for high-profile vehicles.";
+    if (severity !== "extreme") severity = "critical"; 
+    alert = "High Wind Warning"; riskAssessment = "Dangerous crosswinds for high-profile vehicles.";
   }
 
   return { condition, severity, icon, alert, riskAssessment };

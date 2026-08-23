@@ -559,8 +559,8 @@ app.post('/api/route-weather', async (c) => {
     const { geometry, distanceMeters, durationSeconds, steps, durations, distances } = routeResult;
 
     // 3. Route sampling (using simplified route to generate points efficiently)
-    // We use a small epsilon ~0.005 degrees to reduce redundant points on long straightaways
-    const simplifiedCoords = rdp(geometry.coordinates, 0.005);
+    // We use a small epsilon ~0.0005 degrees to reduce redundant points on long straightaways
+    const simplifiedCoords = rdp(geometry.coordinates, 0.0005);
     const routeLine = lineString(simplifiedCoords);
     
     let cumulativeDistances = [0];

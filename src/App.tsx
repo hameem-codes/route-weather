@@ -1282,7 +1282,11 @@ function App() {
             });
 
             if (progress < 1) {
-              const cutoff = Math.max(0, Math.min(1, progress));
+              let cutoff = Math.max(0, Math.min(1, progress));
+              const lastVal = gradientExpression.length >= 5 ? gradientExpression[gradientExpression.length - 2] : -1;
+              if (cutoff <= lastVal) {
+                cutoff = lastVal + 0.00001;
+              }
               const nextCutoff = Math.min(1, cutoff + 0.0001);
               gradientExpression.push(cutoff, currentDrawColor);
               gradientExpression.push(nextCutoff, 'rgba(0,0,0,0)');
