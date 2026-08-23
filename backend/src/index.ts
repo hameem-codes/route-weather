@@ -34,7 +34,12 @@ const getRedis = (c: any) => {
 
 const WORKER_START = new Date().toISOString();
 
-const app = new Hono<{ Bindings: Bindings, Variables: { userId: string } }>();
+type Variables = {
+  userId: string;
+  jwtPayload: any;
+};
+
+const app = new Hono<{ Bindings: Bindings, Variables: Variables }>();
 
 // Rate Limiting Middleware
 app.use('/api/*', async (c, next) => {
@@ -112,7 +117,9 @@ const getAllowedOrigin = (c: any) => {
 // 1. Strict CORS Configuration
 app.use('/api/*', (c, next) => cors({
   origin: getAllowedOrigin(c),
-  allowMethods: ['GET', 'POST', 'OPTIONS'],
+  allowMethods: ['GET', 'POST', 'OPTIONS', 'DELETE'],
+  allowHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
 })(c, next))
 
 // 2. Maximum Request Size limit (10KB)

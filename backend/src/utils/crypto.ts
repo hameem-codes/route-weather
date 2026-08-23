@@ -21,7 +21,7 @@ export async function hashPassword(password: string): Promise<string> {
     ['encrypt', 'decrypt']
   );
   
-  const exportedKey = await crypto.subtle.exportKey('raw', key);
+  const exportedKey = await crypto.subtle.exportKey('raw', key) as ArrayBuffer;
   const hashBuffer = new Uint8Array(exportedKey);
   const hashArray = Array.from(hashBuffer);
   const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
@@ -58,7 +58,7 @@ export async function verifyPassword(password: string, storedHash: string): Prom
     ['encrypt', 'decrypt']
   );
   
-  const exportedKey = await crypto.subtle.exportKey('raw', key);
+  const exportedKey = await crypto.subtle.exportKey('raw', key) as ArrayBuffer;
   const hashBuffer = new Uint8Array(exportedKey);
   const hashArray = Array.from(hashBuffer);
   const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
