@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fetchGeocode, fetchRoute, fetchWeather } from './services';
 // @ts-ignore
 import { testApp as app } from './index';
+import worker from './index';
 
 // Mock Crypto utils
 vi.mock('./utils/crypto', () => {
@@ -100,19 +101,16 @@ describe('POST /api/route-weather', () => {
       body: JSON.stringify({ origin: 'UnknownPlaceXYZ', destination: 'Portland' })
     });
 
-    // The Hono error handler will catch this and return a 404
     expect(res.status).toBe(404);
     const json = (await res.json()) as any;
     expect(json.success).toBe(false);
   });
 
   it('returns valid route and weather data for a successful request', async () => {
-    // Mock geocode
     vi.mocked(fetchGeocode)
       .mockResolvedValueOnce({ lat: 47.6, lng: -122.3, name: 'Seattle' })
       .mockResolvedValueOnce({ lat: 45.5, lng: -122.6, name: 'Portland' });
 
-    // Mock route
     vi.mocked(fetchRoute).mockResolvedValueOnce({
       geometry: { type: 'LineString', coordinates: [[-122.3, 47.6], [-122.6, 45.5]] },
       distanceMeters: 280000,
@@ -122,7 +120,6 @@ describe('POST /api/route-weather', () => {
       distances: []
     });
 
-    // Mock weather
     vi.mocked(fetchWeather).mockResolvedValueOnce({
       hourly: {
         time: ["2024-01-01T00:00", "2024-01-01T01:00"],
@@ -140,7 +137,6 @@ describe('POST /api/route-weather', () => {
       }
     });
 
-    // Mock reverse geocode (which relies on fetchWithTimeout directly inside index.ts still, so we must mock global.fetch or it'll fail/timeout)
     const fetchMock = vi.spyOn(global, 'fetch').mockResolvedValue({
       ok: true,
       json: async () => ({ address: { city: 'Test City' } })
@@ -151,7 +147,6 @@ describe('POST /api/route-weather', () => {
       passThroughOnException: vi.fn()
     };
 
-    // Need to pass executionCtx for Hono
     const res = await app.fetch(
       new Request('http://localhost/api/route-weather', {
         method: 'POST',
@@ -178,7 +173,6 @@ describe('Auth Endpoints (/api/auth)', () => {
   const mockEnv = { DB: {}, JWT_SECRET: 'testsecret' };
 
   it('POST /api/auth/signup creates a user and returns cookies', async () => {
-    // Override the mock for this specific test so the user doesn't exist
     const { drizzle } = await import('drizzle-orm/d1');
     vi.mocked(drizzle).mockImplementationOnce(() => ({
       insert: vi.fn().mockReturnValue({ values: vi.fn().mockResolvedValue(true) }),
@@ -217,7 +211,6 @@ describe('Database Endpoints (/api/routes)', () => {
   let token = '';
 
   beforeEach(async () => {
-    // Generate a valid token for testing protected routes
     const { sign } = await import('hono/jwt');
     token = await sign({ sub: 'test-user-id', exp: Math.floor(Date.now() / 1000) + 15 * 60 }, 'testsecret');
   });
@@ -226,5 +219,72 @@ describe('Database Endpoints (/api/routes)', () => {
     const res = await app.request('/api/routes', undefined, mockEnv);
     expect(res.status).toBe(401);
   });
+  
+  it('GET /api/alerts rejects unauthenticated requests', async () => {
+    const res = await app.request('/api/alerts', undefined, mockEnv);
+    expect(res.status).toBe(401);
+  });
 
+  it('GET /api/auth/me returns the correct user when authenticated', async () => {
+    const res = await app.request('/api/auth/me', {
+      headers: { Cookie: `accessToken=${token}` }
+    }, mockEnv);
+    expect(res.status).toBe(200);
+    const json = await res.json() as any;
+    expect(json.success).toBe(true);
+    expect(json.data.email).toBe('test@example.com');
+  });
+
+  it('POST /api/auth/refresh returns a different refreshToken cookie value', async () => {
+    const res = await app.request('/api/auth/refresh', {
+      method: 'POST',
+      headers: { Cookie: `refreshToken=${token}` }
+    }, mockEnv);
+    expect(res.status).toBe(200);
+    const setCookieHeader = res.headers.get('set-cookie');
+    expect(setCookieHeader).toContain('refreshToken=');
+    const newRefreshMatch = setCookieHeader?.match(/refreshToken=([^;]+)/);
+    expect(newRefreshMatch?.[1]).not.toBe(token);
+    expect(newRefreshMatch?.[1]).toBeDefined();
+  });
+});
+
+describe('Background Queue (worker.queue)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('correctly parses a multi-location Open-Meteo response without throwing', async () => {
+    vi.mocked(fetchGeocode)
+      .mockResolvedValueOnce({ lat: 47.6, lng: -122.3, name: 'Seattle' })
+      .mockResolvedValueOnce({ lat: 45.5, lng: -122.6, name: 'Portland' });
+
+    vi.mocked(fetchRoute).mockResolvedValueOnce({
+      geometry: { type: 'LineString', coordinates: [[-122.3, 47.6], [-122.4, 46.5], [-122.6, 45.5]] },
+      distanceMeters: 280000,
+      durationSeconds: 10800,
+      steps: [],
+      durations: [],
+      distances: []
+    });
+
+    vi.mocked(fetchWeather).mockResolvedValueOnce([
+      { hourly: { time: ["2024-01-01T00:00"], weather_code: [65], wind_speed_10m: [10] } },
+      { hourly: { time: ["2024-01-01T00:00"], weather_code: [0], wind_speed_10m: [5] } },
+      { hourly: { time: ["2024-01-01T00:00"], weather_code: [71], wind_speed_10m: [15] } }
+    ]);
+    
+    const mockBatch = {
+      messages: [{
+        body: { routeId: 'route1', userId: 'user1', thresholdSeverity: 'warning' },
+        ack: vi.fn()
+      }]
+    };
+    
+    const mockEnv = { DB: {} };
+    const mockCtx = { waitUntil: vi.fn() };
+    
+    await expect(worker.queue(mockBatch as any, mockEnv as any, mockCtx as any)).resolves.not.toThrow();
+    expect(mockBatch.messages[0].ack).toHaveBeenCalled();
+  });
 });

@@ -14,6 +14,7 @@ import { eq, desc, and } from 'drizzle-orm';
 import { setCookie, getCookie, deleteCookie } from 'hono/cookie';
 import { sign, verify } from 'hono/jwt';
 import { hashPassword, verifyPassword } from './utils/crypto';
+import { getWeatherSeverity } from './utils/weather';
 
 type Bindings = {
   DB: D1Database;
@@ -630,38 +631,8 @@ app.post('/api/route-weather', async (c) => {
       });
       
       const wmoCode = hourly.weather_code[hourIndex];
-      let condition = "Clear";
-      let severity = "safe";
-      let icon = "Sun";
-      let alert = null;
-      let riskAssessment = "Optimal driving conditions.";
-
-      if (wmoCode === 0) { condition = "Clear"; icon = "Sun"; }
-      else if (wmoCode === 1 || wmoCode === 2) { condition = "Partly Cloudy"; icon = "Cloud"; }
-      else if (wmoCode === 3) { condition = "Overcast"; icon = "Cloud"; }
-      else if (wmoCode >= 45 && wmoCode <= 48) { condition = "Fog"; icon = "Cloud"; severity = "warning"; riskAssessment = "Reduced visibility. Drive with caution."; }
-      else if (wmoCode >= 51 && wmoCode <= 57) { condition = "Drizzle"; icon = "CloudRain"; }
-      else if (wmoCode >= 61 && wmoCode <= 65) { 
-        condition = "Rain"; icon = "CloudRain"; severity = "warning"; riskAssessment = "Reduced traction. Increase following distance.";
-        if (wmoCode === 65) { condition = "Heavy Rain"; icon = "CloudLightning"; alert = "Heavy Downpour"; riskAssessment = "High risk of hydroplaning."; }
-      }
-      else if (wmoCode >= 71 && wmoCode <= 77) {
-        condition = "Snow"; icon = "Snowflake"; severity = "critical"; riskAssessment = "Severe winter conditions."; alert = "Snow/Ice on roads";
-      }
-      else if (wmoCode >= 80 && wmoCode <= 82) {
-        condition = "Rain Showers"; icon = "CloudRain"; severity = "warning";
-      }
-      else if (wmoCode >= 85 && wmoCode <= 86) {
-        condition = "Snow Showers"; icon = "CloudSnow"; severity = "critical"; alert = "Snow Showers";
-      }
-      else if (wmoCode >= 95) {
-        condition = "Thunderstorm"; icon = "CloudLightning"; severity = "critical"; alert = "Thunderstorm Warning"; riskAssessment = "Dangerous driving conditions.";
-      }
-
       const windSpeed = hourly.wind_speed_10m[hourIndex];
-      if (windSpeed > 30) {
-        severity = "critical"; alert = "High Wind Warning"; riskAssessment = "Dangerous crosswinds for high-profile vehicles.";
-      }
+      const severityInfo = getWeatherSeverity(wmoCode, windSpeed);
       
       const degreesToDirection = (deg: number) => {
         const dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
@@ -671,23 +642,23 @@ app.post('/api/route-weather', async (c) => {
       return {
         ...cp,
         weather: {
-          condition,
+          condition: severityInfo.condition,
           temperatureC: Math.round(hourly.temperature_2m[hourIndex]),
-          severity,
-          icon, 
+          severity: severityInfo.severity,
+          icon: severityInfo.icon, 
           rainProbability: hourly.precipitation_probability[hourIndex],
           feelsLikeC: Math.round(hourly.apparent_temperature[hourIndex]),
           humidity: hourly.relative_humidity_2m[hourIndex],
           windSpeedMph: Math.round(windSpeed),
           windDirection: degreesToDirection(hourly.wind_direction_10m[hourIndex]),
-          visibilityMi: Math.round((hourly.visibility[hourIndex] / 1609.34) * 10) / 10,
+          visibilityMi: Math.round(hourly.visibility[hourIndex] * 0.000621371),
           precipitationIn: hourly.precipitation[hourIndex],
           cloudCover: hourly.cloud_cover[hourIndex],
           uvIndex: hourly.uv_index ? hourly.uv_index[hourIndex] : 0,
-          forecastText: `${condition} expected at arrival time.`,
-          riskAssessment
+          forecastText: `${severityInfo.condition} expected at arrival time.`,
+          riskAssessment: severityInfo.riskAssessment
         },
-        alert,
+        alert: severityInfo.alert,
         eta: arrivalTime.toISOString()
       };
     });
@@ -950,6 +921,21 @@ app.post('/api/auth/login', async (c) => {
   }
 });
 
+app.get('/api/auth/me', async (c) => {
+  const token = getCookie(c, 'accessToken');
+  if (!token) return sendError(c, 'UNAUTHORIZED', 'No access token', 401);
+  try {
+    const payload = await verify(token, c.env.JWT_SECRET, 'HS256');
+    const userId = payload.sub as string;
+    const db = drizzle(c.env.DB);
+    const user = await db.select({ id: users.id, email: users.email }).from(users).where(eq(users.id, userId)).limit(1);
+    if (!user || user.length === 0) return sendError(c, 'UNAUTHORIZED', 'User not found', 401);
+    return c.json({ success: true, data: user[0] });
+  } catch (err) {
+    return sendError(c, 'UNAUTHORIZED', 'Invalid access token', 401);
+  }
+});
+
 app.post('/api/auth/refresh', async (c) => {
   try {
     const token = getCookie(c, 'refreshToken');
@@ -959,8 +945,11 @@ app.post('/api/auth/refresh', async (c) => {
     const userId = payload.sub as string;
 
     const accessToken = await sign({ sub: userId, exp: Math.floor(Date.now() / 1000) + 15 * 60 }, c.env.JWT_SECRET);
+    const newRefreshToken = await sign({ sub: userId, exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60 }, c.env.JWT_SECRET);
+    
     const cookieOptions = { httpOnly: true, secure: true, sameSite: 'Strict' as const, path: '/' };
     setCookie(c, 'accessToken', accessToken, cookieOptions);
+    setCookie(c, 'refreshToken', newRefreshToken, cookieOptions);
 
     return c.json({ success: true });
   } catch (err: any) {
@@ -991,6 +980,8 @@ const authMiddleware = async (c: any, next: any) => {
 
 // Database endpoints
 app.use('/api/routes/*', authMiddleware);
+app.use('/api/alerts/*', authMiddleware);
+
 app.post('/api/routes', async (c) => {
   try {
     const db = drizzle(c.env.DB);
@@ -1195,9 +1186,26 @@ export default {
         
         // Map open-meteo arrays to objects
         const weathers = sampleCoords.map((_, i) => {
-          return {
-             severity: meteoData.hourly.weather_code[i] > 50 ? 'warning' : 'safe' // Mocked parse for brevity
-          };
+          const locData = Array.isArray(meteoData) ? meteoData[i] : meteoData;
+          let hourIndex = 0;
+          const arrivalTime = new Date();
+          let minDiff = Infinity;
+          
+          if (locData && locData.hourly && locData.hourly.time) {
+            locData.hourly.time.forEach((timeStr: string, tIndex: number) => {
+              const time = new Date(timeStr);
+              const diff = Math.abs(time.getTime() - arrivalTime.getTime());
+              if (diff < minDiff) {
+                minDiff = diff;
+                hourIndex = tIndex;
+              }
+            });
+            const wmoCode = locData.hourly.weather_code[hourIndex];
+            const windSpeed = locData.hourly.wind_speed_10m[hourIndex];
+            const sevInfo = getWeatherSeverity(wmoCode, windSpeed);
+            return { severity: sevInfo.severity };
+          }
+          return { severity: 'safe' };
         });
         
         // Find if any threshold is crossed

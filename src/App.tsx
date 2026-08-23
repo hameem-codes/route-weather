@@ -263,8 +263,21 @@ function App() {
   }, [theme]);
 
   useEffect(() => {
-    // Try hitting a protected route to check auth on load, or just load history which handles 401s
-    fetchHistory();
+    const initAuth = async () => {
+      try {
+        const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8787';
+        const res = await fetchWithAuth(`${API_BASE}/api/auth/me`);
+        if (res.ok) {
+          const data = await res.json();
+          setUser(data.data);
+        }
+      } catch (e) {
+        console.error("Failed to restore session", e);
+      } finally {
+        fetchHistory();
+      }
+    };
+    initAuth();
   }, []);
 
   const saveHistory = async (updated: any[]) => {
