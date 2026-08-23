@@ -58,6 +58,7 @@
   -webkit-backdrop-filter: blur(24px);
   border: 1px solid var(--color-dash-border);
   border-radius: 1rem; /* rounded-2xl = 16px */
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
   /* Note: padding (e.g. p-4 or p-6) should be applied on the element itself */
 }
 
@@ -85,37 +86,37 @@
 
 :root {
   /* Dashboard Tokens (Dark default) */
-  --dash-bg: #0a0a0b;
-  --dash-surface: rgba(255, 255, 255, 0.05); /* bg-white/5 */
-  --dash-border: rgba(255, 255, 255, 0.1); /* border-white/10 */
-  --dash-text: rgba(255, 255, 255, 0.95);
-  --dash-text-muted: rgba(255, 255, 255, 0.55);
+  --dash-bg: #121212;
+  --dash-surface: rgba(255, 255, 255, 0.04);
+  --dash-border: rgba(255, 255, 255, 0.1);
+  --dash-text: #ffffff;
+  --dash-text-muted: #a3a3a3;
 
-  --bg-base: #0a0a0b;
-  --bg-surface: rgba(255, 255, 255, 0.05);
+  --bg-base: #121212;
+  --bg-surface: rgba(255, 255, 255, 0.04);
   --bg-elevated: rgba(255, 255, 255, 0.08);
-  --bg-overlay: rgba(10, 10, 12, 0.6);
+  --bg-overlay: rgba(18, 18, 18, 0.8);
 
   --text-primary: #ffffff;
-  --text-secondary: rgba(255, 255, 255, 0.7);
-  --text-muted: rgba(255, 255, 255, 0.45);
+  --text-secondary: #d4d4d4;
+  --text-muted: #a3a3a3;
 
   --border-subtle: rgba(255, 255, 255, 0.08);
   --border-strong: rgba(255, 255, 255, 0.15);
 
   --accent: #ffffff;
   --accent-bg: #ffffff;
-  --accent-text: #0a0a0b;
+  --accent-text: #121212;
 
   /* Weather: Standard color-coded status signals */
-  --weather-safe: #3b82f6; /* blue for clear/safe */
-  --weather-safe-bg: rgba(59, 130, 246, 0.1);
-  --weather-warning: #1d4ed8; /* darker blue for rain/warning */
-  --weather-warning-bg: rgba(29, 78, 216, 0.1);
-  --weather-critical: #f97316; /* orange/red for severe/critical */
-  --weather-critical-bg: rgba(249, 115, 22, 0.1);
-  --weather-extreme: #a855f7; /* purple for snow */
-  --weather-extreme-bg: rgba(168, 85, 247, 0.1);
+  --weather-safe: #10b981; /* green */
+  --weather-safe-bg: rgba(16, 185, 129, 0.1);
+  --weather-warning: #f59e0b; /* yellow */
+  --weather-warning-bg: rgba(245, 158, 11, 0.1);
+  --weather-critical: #ef4444; /* red */
+  --weather-critical-bg: rgba(239, 68, 68, 0.1);
+  --weather-extreme: #ef4444; /* red */
+  --weather-extreme-bg: rgba(239, 68, 68, 0.1);
 }
 
 /* Light theme overrides */

@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1787498765799,
+      "tag": "0000_fat_metal_master",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1787499138549,
+      "tag": "0001_cultured_arclight",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1787499650773,
+      "tag": "0002_past_lockheed",
+      "breakpoints": true
+    }
+  ]
+}

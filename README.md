@@ -1,5 +1,7 @@
 # RouteWeather 🌤️🚗
 
+[![CI](https://github.com/hameemz/route-nigger/actions/workflows/ci.yml/badge.svg)](https://github.com/hameemz/route-nigger/actions/workflows/ci.yml)
+
 RouteWeather is a full-stack application that calculates driving routes between two cities and provides real-time, checkpoint-based weather forecasts along the route. It uses a React/MapLibre frontend and a Cloudflare Workers backend.
 
 ## 🏗️ Architecture
@@ -68,6 +70,29 @@ npm run deploy
 ```
 Copy the resulting `*.workers.dev` URL.
 
+4. Copy `.dev.vars.example` to `.dev.vars` and add your secrets:
+```bash
+cp .dev.vars.example .dev.vars
+```
+
+### Upstash Redis Setup
+This backend uses Upstash Redis for caching and rate limiting. To set this up:
+1. Go to [Upstash](https://upstash.com/) and create a free Redis database (Global or Regional).
+2. Scroll down in the database dashboard to the **REST API** section.
+3. Copy the `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`.
+4. Paste them into your `backend/.dev.vars` file for local development.
+5. Add them to your production Cloudflare worker using Wrangler:
+```bash
+npx wrangler secret put UPSTASH_REDIS_REST_URL
+npx wrangler secret put UPSTASH_REDIS_REST_TOKEN
+```
+
+### Sentry Integration (Optional)
+To track backend errors, add the `SENTRY_DSN` secret to your Cloudflare Worker:
+```bash
+npx wrangler secret put SENTRY_DSN
+```
+
 ### 2. Update CORS (Important)
 Once your frontend is deployed (e.g., to Vercel, Netlify, or Cloudflare Pages), update the `cors` middleware origin in `backend/src/index.ts` to explicitly allow your production frontend domain, then redeploy the backend.
 
@@ -75,6 +100,7 @@ Once your frontend is deployed (e.g., to Vercel, Netlify, or Cloudflare Pages), 
 Create a `.env` file in the frontend root and add your deployed backend URL:
 ```env
 VITE_API_URL=https://routeweather-api.<your-username>.workers.dev
+VITE_SENTRY_DSN=your_frontend_sentry_dsn  # Optional: for frontend error tracking
 ```
 Then build and deploy your frontend using your provider of choice:
 ```bash

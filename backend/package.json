@@ -4,17 +4,25 @@
   "private": true,
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "wrangler d1 migrations apply route-weather-db --local"
   },
   "dependencies": {
+    "@sentry/cloudflare": "^10.70.0",
     "@turf/along": "^7.4.0",
     "@turf/distance": "^7.4.0",
     "@turf/helpers": "^7.4.0",
+    "@upstash/redis": "^1.38.2",
+    "drizzle-orm": "^0.45.2",
     "hono": "^4.0.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260820.1",
+    "drizzle-kit": "^0.31.10",
     "typescript": "^5.0.4",
+    "vitest": "^4.1.11",
     "wrangler": "^4.125.0"
   }
 }

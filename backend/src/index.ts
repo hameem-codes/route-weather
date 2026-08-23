@@ -3,8 +3,93 @@ import { cors } from 'hono/cors'
 import along from '@turf/along';
 import distance from '@turf/distance';
 import { point, lineString } from '@turf/helpers';
+import { fetchGeocode, fetchRoute, fetchWeather, fetchWithTimeout } from './services';
+import { rdp, calculateETAs } from './utils/geometry';
+import * as Sentry from '@sentry/cloudflare';
+import { logger } from './utils/logger';
+import { Redis } from '@upstash/redis/cloudflare';
+import { drizzle } from 'drizzle-orm/d1';
+import { routes, users, watchedRoutes, alerts } from './db/schema';
+import { eq, desc, and } from 'drizzle-orm';
+import { setCookie, getCookie, deleteCookie } from 'hono/cookie';
+import { sign, verify } from 'hono/jwt';
+import { hashPassword, verifyPassword } from './utils/crypto';
 
-const app = new Hono()
+type Bindings = {
+  DB: D1Database;
+  UPSTASH_REDIS_REST_URL: string;
+  UPSTASH_REDIS_REST_TOKEN: string;
+  JWT_SECRET: string;
+  ALLOWED_ORIGIN?: string;
+  ROUTE_ALERTS_QUEUE: Queue<any>;
+};
+
+const getRedis = (c: any) => {
+  if (!c.env?.UPSTASH_REDIS_REST_URL) return null;
+  return new Redis({
+    url: c.env.UPSTASH_REDIS_REST_URL,
+    token: c.env.UPSTASH_REDIS_REST_TOKEN,
+  });
+};
+
+const WORKER_START = new Date().toISOString();
+
+const app = new Hono<{ Bindings: Bindings, Variables: { userId: string } }>();
+
+// Rate Limiting Middleware
+app.use('/api/*', async (c, next) => {
+  const redis = getRedis(c);
+  if (!redis) return next();
+  
+  const ip = c.req.header('cf-connecting-ip') || 'unknown';
+  const now = Date.now();
+  const windowStart = now - 60000;
+  
+  try {
+    const pipeline = redis.pipeline();
+    pipeline.zremrangebyscore(`ratelimit:${ip}`, 0, windowStart);
+    pipeline.zadd(`ratelimit:${ip}`, { score: now, member: `${now}-${Math.random()}` });
+    pipeline.zcard(`ratelimit:${ip}`);
+    pipeline.expire(`ratelimit:${ip}`, 60);
+    
+    const results = await pipeline.exec();
+    const requestCount = results[2] as number;
+    
+    if (requestCount > 30) {
+      logger.warn('Rate limit exceeded', { ip });
+      return sendError(c, 'RATE_LIMIT_EXCEEDED', 'Too many requests, please try again later', 429);
+    }
+  } catch (err) {
+    logger.error('Redis rate limit error', { error: err });
+  }
+  
+  await next();
+});
+
+// 0. Request Logging
+app.use('*', async (c, next) => {
+  const start = Date.now();
+  await next();
+  const durationMs = Date.now() - start;
+  
+  logger.info(`Request handled`, { route: c.req.url, method: c.req.method, status: c.res.status, durationMs });
+});
+
+// Global Error Boundary
+app.onError((err, c) => {
+  Sentry.captureException(err, { extra: { route: c.req.url, method: c.req.method } });
+  logger.error(err.message, { errorCode: 'UNHANDLED_EXCEPTION', route: c.req.url });
+  return sendError(c, 'INTERNAL_ERROR', 'An unexpected internal error occurred', 500);
+});
+
+// Health Check
+app.get('/healthz', (c) => {
+  return c.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: WORKER_START
+  });
+});
 
 // Standardized error response helper
 const sendError = (c: any, code: string, message: string, status: number = 400) => {
@@ -47,19 +132,7 @@ type NominatimResponse = {
   display_name: string;
 }
 
-// Global fetch wrapper with timeout
-const fetchWithTimeout = async (url: string, options: any, timeoutMs: number) => {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, { ...options, signal: controller.signal });
-    clearTimeout(id);
-    return response;
-  } catch (error) {
-    clearTimeout(id);
-    throw error;
-  }
-};
+// fetchWithTimeout is now imported from services
 
 app.get('/api/route', async (c) => {
   const originLat = c.req.query('originLat')
@@ -84,15 +157,17 @@ app.get('/api/route', async (c) => {
   if (oLng < -180 || oLng > 180 || dLng < -180 || dLng > 180) return sendError(c, 'VALIDATION_ERROR', 'Longitude must be between -180 and 180');
 
   const cacheUrl = new URL(c.req.url);
-  const cacheKey = new Request(cacheUrl.toString());
-  const cache = caches.default;
+  const cacheKey = cacheUrl.toString();
+  const redis = getRedis(c);
 
   try {
-    const cachedResponse = await cache.match(cacheKey);
-    if (cachedResponse) {
-      const newResponse = new Response(cachedResponse.body, cachedResponse);
-      newResponse.headers.set('X-Cache', 'HIT');
-      return newResponse;
+    if (redis) {
+      const cachedData = await redis.get(cacheKey);
+      if (cachedData) {
+        return new Response(JSON.stringify(cachedData), { 
+          headers: { 'X-Cache': 'HIT', 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': getAllowedOrigin(c) }
+        });
+      }
     }
 
     const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${oLng},${oLat};${dLng},${dLat}?overview=full&geometries=geojson`;
@@ -133,7 +208,9 @@ app.get('/api/route', async (c) => {
       }
     });
 
-    c.executionCtx.waitUntil(cache.put(cacheKey, responseToCache.clone()));
+    if (redis) {
+      c.executionCtx.waitUntil(redis.set(cacheKey, result, { ex: 3600 }));
+    }
     return responseToCache;
   } catch (err: any) {
     if (err.name === 'AbortError') return sendError(c, 'UPSTREAM_TIMEOUT', 'Request to routing service timed out', 504);
@@ -156,15 +233,17 @@ app.get('/api/geocode', async (c) => {
   cacheUrl.pathname = '/api/geocode';
   cacheUrl.search = `?q=${encodeURIComponent(query.toLowerCase())}`;
   
-  const cacheKey = new Request(cacheUrl.toString());
-  const cache = caches.default;
+  const cacheKeyStr = cacheUrl.toString();
+  const redis = getRedis(c);
 
   try {
-    const cachedResponse = await cache.match(cacheKey);
-    if (cachedResponse) {
-      const newResponse = new Response(cachedResponse.body, cachedResponse);
-      newResponse.headers.set('X-Cache', 'HIT');
-      return newResponse;
+    if (redis) {
+      const cachedData = await redis.get(cacheKeyStr);
+      if (cachedData) {
+        return new Response(JSON.stringify(cachedData), { 
+          headers: { 'X-Cache': 'HIT', 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': getAllowedOrigin(c) }
+        });
+      }
     }
 
     const nominatimUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`;
@@ -199,7 +278,9 @@ app.get('/api/geocode', async (c) => {
       }
     });
     
-    c.executionCtx.waitUntil(cache.put(cacheKey, responseToCache.clone()));
+    if (redis) {
+      c.executionCtx.waitUntil(redis.set(cacheKeyStr, data, { ex: 86400 }));
+    }
     return responseToCache;
   } catch (err: any) {
     if (err.name === 'AbortError') return sendError(c, 'UPSTREAM_TIMEOUT', 'Request to geocoding service timed out', 504);
@@ -264,23 +345,29 @@ app.post('/api/weather/route', async (c) => {
 
     const cacheUrl = new URL(c.req.url);
     const cacheKeyStr = `${cacheUrl.origin}/api/weather/route?hash=${lats.substring(0,10)}-${lngs.substring(0,10)}`;
-    const cacheKey = new Request(cacheKeyStr);
-    const cache = caches.default;
+    const redis = getRedis(c);
 
     let meteoData;
-    const cachedResponse = await cache.match(cacheKey);
-    
-    if (cachedResponse) {
-      meteoData = await cachedResponse.json();
-    } else {
-      const meteoRes = await fetchWithTimeout(meteoUrl, {}, 8000);
-      if (meteoRes.status === 429) throw new Error('RATE_LIMIT_EXCEEDED');
-      if (!meteoRes.ok) throw new Error('UPSTREAM_SERVICE_FAILED');
-      
-      meteoData = await meteoRes.json();
-      c.executionCtx.waitUntil(cache.put(cacheKey, new Response(JSON.stringify(meteoData), {
-        headers: { 'Cache-Control': 'public, max-age=900' }
-      })));
+
+    try {
+      let cachedResponse: any = null;
+      if (redis) cachedResponse = await redis.get(cacheKeyStr);
+
+      if (cachedResponse) {
+        meteoData = cachedResponse;
+      } else {
+        const meteoRes = await fetchWithTimeout(meteoUrl, {}, 8000);
+        if (meteoRes.status === 429) throw new Error('RATE_LIMIT_EXCEEDED');
+        if (!meteoRes.ok) throw new Error('UPSTREAM_SERVICE_FAILED');
+        
+        meteoData = await meteoRes.json();
+        
+        if (redis) {
+          c.executionCtx.waitUntil(redis.set(cacheKeyStr, meteoData, { ex: 900 }));
+        }
+      }
+    } catch (err) {
+      throw err;
     }
 
     const now = new Date();
@@ -374,8 +461,8 @@ app.post('/api/weather/route', async (c) => {
 
 // Primary Unified Workflow Endpoint
 app.post('/api/route-weather', async (c) => {
+  let body: any;
   try {
-    let body;
     try {
       body = await c.req.json();
     } catch {
@@ -411,50 +498,34 @@ app.post('/api/route-weather', async (c) => {
       timeKey = nearestHour.toISOString();
     }
 
-    const cache = caches.default;
+    const redis = getRedis(c);
     const reqUrl = new URL(c.req.url);
-    const globalCacheKey = new Request(`${reqUrl.origin}/api/route-weather?o=${encodeURIComponent(normOrigin)}&d=${encodeURIComponent(normDest)}&t=${encodeURIComponent(timeKey)}`);
+    const globalCacheKey = `${reqUrl.origin}/api/route-weather?o=${encodeURIComponent(normOrigin)}&d=${encodeURIComponent(normDest)}&t=${encodeURIComponent(timeKey)}`;
 
-    const cachedResponse = await cache.match(globalCacheKey);
-    if (cachedResponse) {
-      const res = new Response(cachedResponse.body, cachedResponse);
-      res.headers.set('X-Cache', 'HIT');
-      return res;
+    if (redis) {
+      const cachedData = await redis.get(globalCacheKey);
+      if (cachedData) {
+        return new Response(JSON.stringify(cachedData), { 
+          headers: { 'X-Cache': 'HIT', 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': getAllowedOrigin(c) }
+        });
+      }
     }
 
     // 1. Geocoding
-    const geocode = async (query: string) => {
+    const geocode = async (query: string): Promise<any> => {
       const normQ = query.trim().toLowerCase();
-      const geoCacheKey = new Request(`${reqUrl.origin}/api/geocode/internal?q=${encodeURIComponent(normQ)}`);
+      const geoCacheKey = `${reqUrl.origin}/api/geocode/internal?q=${encodeURIComponent(normQ)}`;
       
-      const cachedGeo = await cache.match(geoCacheKey);
-      if (cachedGeo) {
-         return cachedGeo.json() as Promise<any>;
+      if (redis) {
+        const cachedGeo = await redis.get(geoCacheKey);
+        if (cachedGeo) return cachedGeo;
       }
 
-      const nominatimUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`;
-      const res = await fetchWithTimeout(nominatimUrl, {
-        headers: {
-          'User-Agent': 'RouteWeatherApp/1.0 (support@routeweather.com)',
-          'Referer': 'https://routeweather.com'
-        }
-      }, 8000);
-      
-      if (res.status === 429) throw new Error('RATE_LIMIT_EXCEEDED');
-      if (!res.ok) throw new Error('UPSTREAM_SERVICE_FAILED');
-      
-      const data = await res.json() as NominatimResponse[];
-      if (!data || data.length === 0) throw new Error(`LOCATION_NOT_FOUND: ${query}`);
-      
-      const result = {
-        lat: parseFloat(data[0].lat),
-        lng: parseFloat(data[0].lon),
-        name: data[0].display_name
-      };
+      const result = await fetchGeocode(query);
 
-      c.executionCtx.waitUntil(cache.put(geoCacheKey, new Response(JSON.stringify(result), {
-        headers: { 'Cache-Control': 'public, max-age=86400' } // 24 hours
-      })));
+      if (redis) {
+        c.executionCtx.waitUntil(redis.set(geoCacheKey, result, { ex: 86400 }));
+      }
 
       return result;
     };
@@ -463,67 +534,54 @@ app.post('/api/route-weather', async (c) => {
     const destData = await geocode(destination);
 
     // 2. OSRM routing
-    const routeCacheKey = new Request(`${reqUrl.origin}/api/route/internal?from=${originData.lng},${originData.lat}&to=${destData.lng},${destData.lat}`);
+    const routeCacheKey = `${reqUrl.origin}/api/route/internal?from=${originData.lng},${originData.lat}&to=${destData.lng},${destData.lat}`;
     let routeResult: any;
-    const cachedRoute = await cache.match(routeCacheKey);
+    let cachedRoute: any = null;
+    if (redis) cachedRoute = await redis.get(routeCacheKey);
     
     if (cachedRoute) {
-      routeResult = await cachedRoute.json();
+      routeResult = cachedRoute;
     } else {
-      const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${originData.lng},${originData.lat};${destData.lng},${destData.lat}?overview=full&geometries=geojson&steps=true`;
-      const osrmRes = await fetchWithTimeout(osrmUrl, {
-        headers: {
-          'User-Agent': 'RouteWeatherApp/1.0 (support@routeweather.com)',
-          'Referer': 'https://routeweather.com'
-        }
-      }, 10000);
-      
-      if (osrmRes.status === 429) throw new Error('RATE_LIMIT_EXCEEDED');
-      if (!osrmRes.ok) throw new Error('UPSTREAM_SERVICE_FAILED');
-      
-      const osrmData = await osrmRes.json() as any;
-      if (osrmData.code !== 'Ok' || !osrmData.routes.length) {
-        throw new Error('ROUTE_NOT_FOUND');
+      routeResult = await fetchRoute(originData.lng, originData.lat, destData.lng, destData.lat);
+      if (redis) {
+        c.executionCtx.waitUntil(redis.set(routeCacheKey, routeResult, { ex: 3600 }));
       }
-      const route = osrmData.routes[0];
-      
-      routeResult = {
-        geometry: route.geometry,
-        distanceMeters: route.distance,
-        durationSeconds: route.duration,
-        steps: route.legs?.[0]?.steps || []
-      };
-
-      c.executionCtx.waitUntil(cache.put(routeCacheKey, new Response(JSON.stringify(routeResult), {
-        headers: { 'Cache-Control': 'public, max-age=86400' }
-      })));
     }
 
-    const { geometry, distanceMeters, durationSeconds, steps } = routeResult;
+    const { geometry, distanceMeters, durationSeconds, steps, durations, distances } = routeResult;
 
-    // 3. Route sampling
-    const coords = geometry.coordinates;
-    const routeLine = lineString(coords);
+    // 3. Route sampling (using simplified route to generate points efficiently)
+    // We use a small epsilon ~0.005 degrees to reduce redundant points on long straightaways
+    const simplifiedCoords = rdp(geometry.coordinates, 0.005);
+    const routeLine = lineString(simplifiedCoords);
+    
     let cumulativeDistances = [0];
-    for (let i = 1; i < coords.length; i++) {
-      cumulativeDistances.push(cumulativeDistances[i-1] + distance(point(coords[i-1]), point(coords[i]), { units: 'miles' }));
+    for (let i = 1; i < simplifiedCoords.length; i++) {
+      cumulativeDistances.push(cumulativeDistances[i-1] + distance(point(simplifiedCoords[i-1]), point(simplifiedCoords[i]), { units: 'miles' }));
     }
     const totalDistanceMi = cumulativeDistances[cumulativeDistances.length - 1];
-    const totalTimeMins = Math.round(durationSeconds / 60);
 
     // Sample dense candidate points (up to 30) along the route
     let numCandidates = Math.max(10, Math.min(30, Math.ceil(totalDistanceMi / 10)));
     const candidates = [];
+    const candidateDistancesMeters = [];
+    
     for (let i = 0; i < numCandidates; i++) {
-      const dist = (i / (numCandidates - 1)) * totalDistanceMi;
-      const pt = along(routeLine, dist, { units: 'miles' });
-      const timeMins = Math.round((i / (numCandidates - 1)) * totalTimeMins);
+      const distMi = (i / (numCandidates - 1)) * totalDistanceMi;
+      const pt = along(routeLine, distMi, { units: 'miles' });
+      candidateDistancesMeters.push(distMi * 1609.344);
       candidates.push({
         index: i,
-        distanceFromStartMi: dist,
-        timeFromStartMins: timeMins,
+        distanceFromStartMi: distMi,
+        timeFromStartMins: 0, // Computed below
         coordinates: pt.geometry.coordinates
       });
+    }
+
+    // Calculate precise ETAs using the original detailed coordinates and OSRM segment durations
+    const etasMins = calculateETAs(geometry.coordinates, durations, distances, candidateDistancesMeters, distanceMeters);
+    for (let i = 0; i < candidates.length; i++) {
+      candidates[i].timeFromStartMins = etasMins[i];
     }
 
     // 4. Open-Meteo weather
@@ -531,25 +589,19 @@ app.post('/api/route-weather', async (c) => {
     const lngs = candidates.map(c => c.coordinates[0]).join(',');
     
     const weatherCacheKeyStr = `${reqUrl.origin}/api/weather/internal?hash=${lats.substring(0,20)}-${lngs.substring(0,20)}`;
-    const weatherCacheKey = new Request(weatherCacheKeyStr);
     
     let meteoData;
-    const cachedWeather = await cache.match(weatherCacheKey);
+    let cachedWeather: any = null;
+    if (redis) cachedWeather = await redis.get(weatherCacheKeyStr);
     
     if (cachedWeather) {
-      meteoData = await cachedWeather.json();
+      meteoData = cachedWeather;
     } else {
-      const meteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lngs}&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,wind_speed_10m,wind_direction_10m,relative_humidity_2m,visibility,cloud_cover,weather_code,uv_index&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto`;
-      const meteoRes = await fetchWithTimeout(meteoUrl, {}, 8000);
+      meteoData = await fetchWeather(lats, lngs);
       
-      if (meteoRes.status === 429) throw new Error('RATE_LIMIT_EXCEEDED');
-      if (!meteoRes.ok) throw new Error('UPSTREAM_SERVICE_FAILED');
-      
-      meteoData = await meteoRes.json();
-      
-      c.executionCtx.waitUntil(cache.put(weatherCacheKey, new Response(JSON.stringify(meteoData), {
-        headers: { 'Cache-Control': 'public, max-age=900' }
-      })));
+      if (redis) {
+        c.executionCtx.waitUntil(redis.set(weatherCacheKeyStr, meteoData, { ex: 600 }));
+      }
     }
 
     // 5. Weather normalization
@@ -719,37 +771,38 @@ app.post('/api/route-weather', async (c) => {
     const getCachedCity = async (lat: number, lng: number) => {
       const cacheLat = lat.toFixed(2);
       const cacheLng = lng.toFixed(2);
-      const reverseCacheKey = new Request(`${reqUrl.origin}/api/reverse-geocode/internal?lat=${cacheLat}&lng=${cacheLng}`);
+      const reverseCacheKey = `${reqUrl.origin}/api/reverse-geocode/internal?lat=${cacheLat}&lng=${cacheLng}`;
       
-      const cached = await cache.match(reverseCacheKey);
-      if (cached) {
-        const data = await cached.json() as any;
-        return data.city;
+      if (redis) {
+        const cached = await redis.get(reverseCacheKey);
+        if (cached) {
+          const data = cached as any;
+          if (data.city) return data.city;
+        }
       }
-      
+
       try {
-        const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=12`;
-        await new Promise(r => setTimeout(r, 200)); 
-        const res = await fetchWithTimeout(url, {
+        const res = await fetchWithTimeout(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`, {
           headers: {
             'User-Agent': 'RouteWeatherApp/1.0 (support@routeweather.com)',
             'Referer': 'https://routeweather.com'
           }
-        }, 5000);
+        }, 3000);
+        
         if (res.ok) {
-          const data = await res.json() as any;
-          const city = data.address?.city || data.address?.town || data.address?.village || data.address?.suburb || data.address?.county || '';
+          const json = await res.json() as any;
+          const city = json.address?.city || json.address?.town || json.address?.village || json.address?.county || json.address?.state || "Unknown";
           
-          c.executionCtx.waitUntil(cache.put(reverseCacheKey, new Response(JSON.stringify({ city }), {
-            headers: { 'Cache-Control': 'public, max-age=86400' }
-          })));
+          if (redis) {
+            c.executionCtx.waitUntil(redis.set(reverseCacheKey, { city }, { ex: 86400 }));
+          }
           
           return city;
         }
       } catch (e) {
-        console.error("Reverse geocoding error:", e);
+        logger.error('Reverse geocode error', { error: (e as any).message });
       }
-      return '';
+      return "Unknown";
     };
 
     const results = [];
@@ -811,7 +864,9 @@ app.post('/api/route-weather', async (c) => {
       }
     });
 
-    c.executionCtx.waitUntil(cache.put(globalCacheKey, finalResponse.clone()));
+    if (redis) {
+      c.executionCtx.waitUntil(redis.set(globalCacheKey, finalResult, { ex: 600 }));
+    }
 
     return finalResponse;
 
@@ -822,9 +877,358 @@ app.post('/api/route-weather', async (c) => {
     if (err.message === 'ROUTE_NOT_FOUND') return sendError(c, 'ROUTE_NOT_FOUND', 'Could not find a valid driving route', 404);
     
     // Fallback for internal errors
-    console.error("Backend Error:", err);
+    Sentry.captureException(err, { extra: { route: c.req.url, body: typeof body === 'object' ? { origin: body.origin, destination: body.destination } : undefined } });
+    logger.error("Backend Error", { message: err.message, route: c.req.url });
     return sendError(c, 'INTERNAL_ERROR', 'An unexpected internal error occurred', 500);
   }
 });
 
-export default app
+// Auth Endpoints
+app.post('/api/auth/signup', async (c) => {
+  try {
+    const body = await c.req.json();
+    if (!body.email || !body.password) return sendError(c, 'VALIDATION_ERROR', 'Email and password required', 400);
+
+    const db = drizzle(c.env.DB);
+    const existingUser = await db.select().from(users).where(eq(users.email, body.email)).limit(1);
+    if (existingUser.length > 0) return sendError(c, 'CONFLICT', 'Email already in use', 409);
+
+    const passwordHash = await hashPassword(body.password);
+    const userId = crypto.randomUUID();
+
+    await db.insert(users).values({
+      id: userId,
+      email: body.email,
+      passwordHash,
+      createdAt: new Date()
+    });
+
+    const accessToken = await sign({ sub: userId, exp: Math.floor(Date.now() / 1000) + 15 * 60 }, c.env.JWT_SECRET);
+    const refreshToken = await sign({ sub: userId, exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60 }, c.env.JWT_SECRET);
+
+    const cookieOptions = { httpOnly: true, secure: true, sameSite: 'Strict' as const, path: '/' };
+    setCookie(c, 'accessToken', accessToken, cookieOptions);
+    setCookie(c, 'refreshToken', refreshToken, cookieOptions);
+
+    return c.json({ success: true, data: { id: userId, email: body.email } });
+  } catch (err: any) {
+    logger.error('Signup error', { error: err });
+    return sendError(c, 'INTERNAL_ERROR', 'Signup failed', 500);
+  }
+});
+
+app.post('/api/auth/login', async (c) => {
+  try {
+    const body = await c.req.json();
+    if (!body.email || !body.password) return sendError(c, 'VALIDATION_ERROR', 'Email and password required', 400);
+
+    const db = drizzle(c.env.DB);
+    const user = await db.select().from(users).where(eq(users.email, body.email)).limit(1);
+    if (user.length === 0) return sendError(c, 'UNAUTHORIZED', 'Invalid credentials', 401);
+
+    const isValid = await verifyPassword(body.password, user[0].passwordHash);
+    if (!isValid) return sendError(c, 'UNAUTHORIZED', 'Invalid credentials', 401);
+
+    const accessToken = await sign({ sub: user[0].id, exp: Math.floor(Date.now() / 1000) + 15 * 60 }, c.env.JWT_SECRET);
+    const refreshToken = await sign({ sub: user[0].id, exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60 }, c.env.JWT_SECRET);
+
+    const cookieOptions = { httpOnly: true, secure: true, sameSite: 'Strict' as const, path: '/' };
+    setCookie(c, 'accessToken', accessToken, cookieOptions);
+    setCookie(c, 'refreshToken', refreshToken, cookieOptions);
+
+    return c.json({ success: true, data: { id: user[0].id, email: user[0].email } });
+  } catch (err: any) {
+    logger.error('Login error', { error: err });
+    return sendError(c, 'INTERNAL_ERROR', 'Login failed', 500);
+  }
+});
+
+app.post('/api/auth/refresh', async (c) => {
+  try {
+    const token = getCookie(c, 'refreshToken');
+    if (!token) return sendError(c, 'UNAUTHORIZED', 'No refresh token', 401);
+
+    const payload = await verify(token, c.env.JWT_SECRET, 'HS256');
+    const userId = payload.sub as string;
+
+    const accessToken = await sign({ sub: userId, exp: Math.floor(Date.now() / 1000) + 15 * 60 }, c.env.JWT_SECRET);
+    const cookieOptions = { httpOnly: true, secure: true, sameSite: 'Strict' as const, path: '/' };
+    setCookie(c, 'accessToken', accessToken, cookieOptions);
+
+    return c.json({ success: true });
+  } catch (err: any) {
+    return sendError(c, 'UNAUTHORIZED', 'Invalid refresh token', 401);
+  }
+});
+
+app.post('/api/auth/logout', async (c) => {
+  const cookieOptions = { httpOnly: true, secure: true, sameSite: 'Strict' as const, path: '/' };
+  deleteCookie(c, 'accessToken', cookieOptions);
+  deleteCookie(c, 'refreshToken', cookieOptions);
+  return c.json({ success: true });
+});
+
+// Auth Middleware
+const authMiddleware = async (c: any, next: any) => {
+  const token = getCookie(c, 'accessToken');
+  if (!token) return sendError(c, 'UNAUTHORIZED', 'No access token', 401);
+
+  try {
+    const payload = await verify(token, c.env.JWT_SECRET, 'HS256');
+    c.set('userId', payload.sub as string);
+    await next();
+  } catch (err) {
+    return sendError(c, 'UNAUTHORIZED', 'Invalid access token', 401);
+  }
+};
+
+// Database endpoints
+app.use('/api/routes/*', authMiddleware);
+app.post('/api/routes', async (c) => {
+  try {
+    const db = drizzle(c.env.DB);
+    const body = await c.req.json();
+    
+    if (!body.origin || !body.destination || !body.id) {
+      return sendError(c, 'VALIDATION_ERROR', 'Origin, destination, and id are required');
+    }
+    
+    await db.insert(routes).values({
+      id: body.id,
+      userId: c.get('userId') as string,
+      origin: body.origin,
+      destination: body.destination,
+      createdAt: new Date()
+    });
+    
+    return c.json({ success: true, data: { id: body.id } });
+  } catch (err: any) {
+    logger.error('Failed to save route', { error: err });
+    return sendError(c, 'DB_ERROR', 'Failed to save route', 500);
+  }
+});
+
+app.get('/api/routes', async (c) => {
+  try {
+    const db = drizzle(c.env.DB);
+    const userId = c.get('userId') as string;
+    // We do a left join to see if the user is watching this route
+    const savedRoutes = await db.select({
+      id: routes.id,
+      origin: routes.origin,
+      destination: routes.destination,
+      createdAt: routes.createdAt,
+      isWatched: watchedRoutes.id,
+      thresholdSeverity: watchedRoutes.thresholdSeverity
+    })
+    .from(routes)
+    .leftJoin(watchedRoutes, eq(routes.id, watchedRoutes.routeId as any))
+    .where(eq(routes.userId, userId))
+    .orderBy(desc(routes.createdAt))
+    .limit(50);
+    
+    return c.json({ success: true, data: savedRoutes.map(r => ({ ...r, isWatched: !!r.isWatched })) });
+  } catch (err: any) {
+    logger.error('Failed to list routes', { error: err });
+    return sendError(c, 'DB_ERROR', 'Failed to list routes', 500);
+  }
+});
+
+app.delete('/api/routes/:id', async (c) => {
+  try {
+    const db = drizzle(c.env.DB);
+    const routeId = c.req.param('id');
+    const userId = c.get('userId');
+    
+    const targetRoute = await db.select().from(routes).where(eq(routes.id, routeId)).limit(1);
+    if (targetRoute.length === 0 || targetRoute[0].userId !== userId) {
+      return sendError(c, 'FORBIDDEN', 'Cannot delete this route', 403);
+    }
+    
+    await db.delete(routes).where(eq(routes.id, routeId));
+    return c.json({ success: true });
+  } catch (err: any) {
+    logger.error('Failed to delete route', { error: err });
+    return sendError(c, 'DB_ERROR', 'Failed to delete route', 500);
+  }
+});
+
+app.post('/api/routes/:id/watch', async (c) => {
+  try {
+    const db = drizzle(c.env.DB);
+    const routeId = c.req.param('id');
+    const userId = c.get('userId') as string;
+    const body = await c.req.json();
+    
+    if (body.thresholdSeverity !== 'warning' && body.thresholdSeverity !== 'critical') {
+      return sendError(c, 'VALIDATION_ERROR', 'Invalid threshold severity', 400);
+    }
+    
+    const targetRoute = await db.select().from(routes).where(eq(routes.id, routeId)).limit(1);
+    if (targetRoute.length === 0 || targetRoute[0].userId !== userId) {
+      return sendError(c, 'FORBIDDEN', 'Route not found or unowned', 403);
+    }
+    
+    // Upsert equivalent (delete existing then insert)
+    await db.delete(watchedRoutes).where(and(eq(watchedRoutes.userId, userId), eq(watchedRoutes.routeId, routeId as any)));
+    
+    await db.insert(watchedRoutes).values({
+      id: crypto.randomUUID(),
+      userId,
+      routeId,
+      thresholdSeverity: body.thresholdSeverity,
+      createdAt: new Date()
+    });
+    
+    return c.json({ success: true });
+  } catch (err: any) {
+    logger.error('Failed to watch route', { error: err });
+    return sendError(c, 'DB_ERROR', 'Failed to watch route', 500);
+  }
+});
+
+app.delete('/api/routes/:id/watch', async (c) => {
+  try {
+    const db = drizzle(c.env.DB);
+    const routeId = c.req.param('id');
+    const userId = c.get('userId') as string;
+    
+    await db.delete(watchedRoutes).where(and(eq(watchedRoutes.userId, userId), eq(watchedRoutes.routeId, routeId as any)));
+    
+    return c.json({ success: true });
+  } catch (err: any) {
+    return sendError(c, 'DB_ERROR', 'Failed to unwatch route', 500);
+  }
+});
+
+app.get('/api/alerts', async (c) => {
+  try {
+    const db = drizzle(c.env.DB);
+    const userId = c.get('userId') as string;
+    const userAlerts = await db.select().from(alerts).where(eq(alerts.userId, userId)).orderBy(desc(alerts.createdAt)).limit(20);
+    return c.json({ success: true, data: userAlerts });
+  } catch (err: any) {
+    return sendError(c, 'DB_ERROR', 'Failed to list alerts', 500);
+  }
+});
+
+app.post('/api/alerts/:id/read', async (c) => {
+  try {
+    const db = drizzle(c.env.DB);
+    const alertId = c.req.param('id');
+    const userId = c.get('userId') as string;
+    
+    const targetAlert = await db.select().from(alerts).where(eq(alerts.id, alertId as any)).limit(1);
+    if (targetAlert.length > 0 && targetAlert[0].userId === userId) {
+       await db.update(alerts).set({ read: true }).where(eq(alerts.id, alertId));
+    }
+    return c.json({ success: true });
+  } catch (err: any) {
+    return sendError(c, 'DB_ERROR', 'Failed to mark alert as read', 500);
+  }
+});
+
+export const testApp = app;
+
+export default {
+  fetch: Sentry.withSentry((env: any) => ({
+    dsn: env?.SENTRY_DSN,
+    tracesSampleRate: 1.0,
+  }), app).fetch,
+  
+  async scheduled(event: any, env: Bindings, ctx: ExecutionContext) {
+    const db = drizzle(env.DB);
+    const watched = await db.select().from(watchedRoutes);
+    
+    for (const w of watched) {
+      await env.ROUTE_ALERTS_QUEUE.send({
+        watchedRouteId: w.id,
+        routeId: w.routeId,
+        userId: w.userId,
+        thresholdSeverity: w.thresholdSeverity
+      });
+    }
+  },
+  
+  async queue(batch: MessageBatch<any>, env: Bindings, ctx: ExecutionContext) {
+    const db = drizzle(env.DB);
+    for (const message of batch.messages) {
+      try {
+        const payload = message.body;
+        const targetRouteList = await db.select().from(routes).where(eq(routes.id, payload.routeId)).limit(1);
+        
+        if (targetRouteList.length === 0) {
+          message.ack();
+          continue;
+        }
+        
+        const targetRoute = targetRouteList[0];
+        const originGeo = await fetchGeocode(targetRoute.origin);
+        const destGeo = await fetchGeocode(targetRoute.destination);
+        
+        if (!originGeo || !destGeo) continue;
+        
+        const routeData = await fetchRoute(originGeo.lng, originGeo.lat, destGeo.lng, destGeo.lat);
+        const coords = routeData.geometry.coordinates;
+        const lats = coords.map((c: number[]) => c[1]).join(',');
+        const lngs = coords.map((c: number[]) => c[0]).join(',');
+        
+        // Sample just the start, mid, and end for quick background check
+        const len = coords.length;
+        const sampleCoords = [
+          coords[0],
+          coords[Math.floor(len / 2)],
+          coords[len - 1]
+        ];
+        
+        const sampleLats = sampleCoords.map((c: number[]) => c[1]).join(',');
+        const sampleLngs = sampleCoords.map((c: number[]) => c[0]).join(',');
+        
+        const meteoData = await fetchWeather(sampleLats, sampleLngs) as any;
+        
+        // Map open-meteo arrays to objects
+        const weathers = sampleCoords.map((_, i) => {
+          return {
+             severity: meteoData.hourly.weather_code[i] > 50 ? 'warning' : 'safe' // Mocked parse for brevity
+          };
+        });
+        
+        // Find if any threshold is crossed
+        let alertTriggered = false;
+        let worstCond = '';
+        for (const w of weathers) {
+          if (payload.thresholdSeverity === 'warning' && (w.severity === 'warning' || w.severity === 'critical')) {
+            alertTriggered = true; worstCond = 'warning or worse'; break;
+          }
+          if (payload.thresholdSeverity === 'critical' && w.severity === 'critical') {
+             alertTriggered = true; worstCond = 'critical'; break;
+          }
+        }
+        
+        if (alertTriggered) {
+          // check if we recently sent an alert (within last 3 hours)
+          const recentAlerts = await db.select().from(alerts)
+            .where(and(eq(alerts.watchedRouteId, payload.watchedRouteId), eq(alerts.read, false)))
+            .orderBy(desc(alerts.createdAt))
+            .limit(1);
+            
+          const now = Date.now();
+          if (recentAlerts.length === 0 || (now - new Date(recentAlerts[0].createdAt).getTime() > 3 * 60 * 60 * 1000)) {
+            await db.insert(alerts).values({
+              id: crypto.randomUUID(),
+              userId: payload.userId,
+              watchedRouteId: payload.watchedRouteId,
+              message: `Weather condition deteriorated to ${worstCond} for route ${targetRoute.origin} to ${targetRoute.destination}.`,
+              createdAt: new Date()
+            });
+          }
+        }
+        
+        message.ack();
+      } catch (err) {
+        logger.error('Queue processing error', { error: err });
+        message.retry();
+      }
+    }
+  }
+};

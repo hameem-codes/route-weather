@@ -1,0 +1,1 @@
+{"root":["./drizzle.config.ts","./vitest.config.ts","./src/index.test.ts","./src/index.ts","./src/services.test.ts","./src/services.ts","./src/db/schema.ts","./src/utils/geometry.test.ts","./src/utils/geometry.ts","./src/utils/logger.ts"],"version":"5.9.3"}

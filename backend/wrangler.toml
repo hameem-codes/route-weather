@@ -1,6 +1,29 @@
 name = "routeweather-api"
 main = "src/index.ts"
 compatibility_date = "2024-02-08"
+compatibility_flags = ["nodejs_compat"]
 
 [vars]
+SENTRY_DSN = "your_sentry_dsn_here"
 ALLOWED_ORIGIN = "http://localhost:5173"
+UPSTASH_REDIS_REST_URL = ""
+UPSTASH_REDIS_REST_TOKEN = ""
+JWT_SECRET = "your_dev_jwt_secret_here"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "route-weather-db"
+database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+[triggers]
+crons = ["*/30 * * * *"]
+
+[[queues.producers]]
+queue = "route-alerts-queue"
+binding = "ROUTE_ALERTS_QUEUE"
+
+[[queues.consumers]]
+queue = "route-alerts-queue"
+max_batch_size = 10
+max_batch_timeout = 30
+max_retries = 3

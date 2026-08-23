@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   MapPin,
   Flag,
@@ -21,7 +22,6 @@ import {
   Eye,
   Warning,
   X,
-  CaretLeft,
   CaretRight,
   ClockCounterClockwise as HistoryIcon,
   Brain,
@@ -41,60 +41,9 @@ import { toPng } from 'html-to-image';
 maplibregl.setWorkerUrl(mapLibreWorkerUrl);
 
 import 'maplibre-gl/dist/maplibre-gl.css';
+import { getColorForSeverity, getIconColorClass } from './utils/weatherStyles';
 
-const getHybridMapStyle = () => ({
-  version: 8,
-  sources: {
-    'esri-satellite': {
-      type: 'raster',
-      tiles: [
-        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-      ],
-      tileSize: 256,
-      attribution: '&copy; Esri, Maxar'
-    },
-    'esri-roads': {
-      type: 'raster',
-      tiles: [
-        'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}'
-      ],
-      tileSize: 256
-    },
-    'esri-labels': {
-      type: 'raster',
-      tiles: [
-        'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'
-      ],
-      tileSize: 256
-    }
-  },
-  layers: [
-    {
-      id: 'satellite-layer',
-      type: 'raster',
-      source: 'esri-satellite',
-      minzoom: 0,
-      maxzoom: 22
-    },
-    {
-      id: 'roads-layer',
-      type: 'raster',
-      source: 'esri-roads',
-      minzoom: 0,
-      maxzoom: 22,
-      paint: {
-        'raster-opacity': 0.8
-      }
-    },
-    {
-      id: 'labels-layer',
-      type: 'raster',
-      source: 'esri-labels',
-      minzoom: 0,
-      maxzoom: 22
-    }
-  ]
-});
+
 
 const IconMap: Record<string, any> = {
   "Sun": Sun,
@@ -144,68 +93,51 @@ const getPointAtDistance = (coords: number[][], cumulativeDists: number[], targe
   return { pos: coords[coords.length - 1] as [number, number], bearing: lastB };
 };
 
-// Slice coordinates based on distance metrics
-function getSlicedCoordinates(coords: number[][], dists: number[], startDist: number, endDist: number) {
-  const result: number[][] = [];
-  if (coords.length === 0 || startDist >= endDist) return result;
-  
-  for (let i = 1; i < dists.length; i++) {
-    if (dists[i] >= startDist && result.length === 0) {
-      if (dists[i] === startDist) {
-         result.push([...coords[i]]);
-      } else {
-         const ratio = (startDist - dists[i-1]) / (dists[i] - dists[i-1]);
-         result.push([
-           coords[i-1][0] + (coords[i][0] - coords[i-1][0]) * ratio,
-           coords[i-1][1] + (coords[i][1] - coords[i-1][1]) * ratio
-         ]);
-      }
-      
-      for (let j = i; j < dists.length; j++) {
-         if (dists[j] > startDist && dists[j] < endDist) {
-           result.push([...coords[j]]);
-         }
-         if (dists[j] >= endDist) {
-           if (dists[j] === endDist) {
-             result.push([...coords[j]]);
-           } else {
-             const endRatio = (endDist - dists[j-1]) / (dists[j] - dists[j-1]);
-             result.push([
-               coords[j-1][0] + (coords[j][0] - coords[j-1][0]) * endRatio,
-               coords[j-1][1] + (coords[j][1] - coords[j-1][1]) * endRatio
-             ]);
-           }
-           break;
-         }
-      }
-      break;
-    }
-  }
-  return result;
-}
 
-// Get the visual color for a segment based on its weather conditions
-const getSegmentColor = (seg: any) => {
-  const severity = seg.weather?.severity;
-  const condition = seg.weather?.condition || '';
-  
-  if (severity === 'critical') {
-    if (condition.includes('Snow') || condition.includes('Ice')) return 'var(--weather-extreme)';
-    return 'var(--weather-critical)';
-  }
-  if (severity === 'warning') {
-    return 'var(--weather-warning)';
-  }
-  return 'var(--weather-safe)';
-};
+
+
 
 function App() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapRef>(null);
   const accumulatedBearingRef = useRef<number>(NaN);
   
+  const onMapLoad = (e: any) => {
+    const map = e.target;
+    // Add ESRI satellite layer at the bottom
+    map.addSource('esri-satellite', {
+      type: 'raster',
+      tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+      tileSize: 256
+    });
+    
+    // Find the very first layer
+    const firstLayerId = map.getStyle().layers[0]?.id;
+    map.addLayer({
+      id: 'satellite-layer',
+      type: 'raster',
+      source: 'esri-satellite',
+      minzoom: 0,
+      maxzoom: 22
+    }, firstLayerId);
+
+    // Update typography for symbol layers and make fills transparent
+    const layers = map.getStyle().layers;
+    layers.forEach((layer: any) => {
+      if (layer.type === 'background' || layer.type === 'fill') {
+        map.setPaintProperty(layer.id, layer.type === 'background' ? 'background-opacity' : 'fill-opacity', 0.15);
+      }
+      if (layer.type === 'symbol' && layer.layout?.['text-field']) {
+        map.setLayoutProperty(layer.id, 'text-font', ['Noto Sans Bold']);
+        map.setPaintProperty(layer.id, 'text-halo-color', 'rgba(0,0,0,0.85)');
+        map.setPaintProperty(layer.id, 'text-halo-width', 1.5);
+        map.setPaintProperty(layer.id, 'text-color', '#ffffff');
+      }
+    });
+  };
+
   // Theme and UI States
-  const [theme, setTheme] = useState<'light' | 'dark' | 'night'>(() => {
+  const [theme] = useState<'light' | 'dark' | 'night'>(() => {
     const saved = localStorage.getItem('theme');
     return (saved as 'light' | 'dark' | 'night') || 'dark';
   });
@@ -216,6 +148,8 @@ function App() {
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [isSnapshotMode, setIsSnapshotMode] = useState(false);
   const [showDepartureDropdown, setShowDepartureDropdown] = useState(false);
+  const dropdownButtonRef = useRef<HTMLButtonElement>(null);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
   
   // Route Inputs
   const [originInput, setOriginInput] = useState("San Francisco, CA");
@@ -242,7 +176,86 @@ function App() {
   // Client-Side History Persistence
   const [history, setHistory] = useState<any[]>([]);
 
+  // Auth State
+  const [user, setUser] = useState<{ id: string, email: string } | null>(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+
   const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Helper to handle 401s
+  const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
+    options.credentials = 'include';
+    let res = await fetch(url, options);
+    if (res.status === 401) {
+      // Try refresh
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8787';
+      const refreshRes = await fetch(`${API_BASE}/api/auth/refresh`, { method: 'POST', credentials: 'include' });
+      if (refreshRes.ok) {
+        // Retry
+        res = await fetch(url, options);
+      } else {
+        setUser(null);
+      }
+    }
+    return res;
+  };
+
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError('');
+    try {
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8787';
+      const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/signup';
+      const res = await fetch(`${API_BASE}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email: authEmail, password: authPassword })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || 'Authentication failed');
+      setUser(data.data);
+      setShowAuthModal(false);
+      setAuthPassword('');
+      // Reload history
+      fetchHistory();
+    } catch (err: any) {
+      setAuthError(err.message);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8787';
+      await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST', credentials: 'include' });
+    } finally {
+      setUser(null);
+      fetchHistory();
+    }
+  };
+
+  const fetchHistory = async () => {
+    try {
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8787';
+      const res = await fetchWithAuth(`${API_BASE}/api/routes`);
+      if (res.ok) {
+        const data = await res.json();
+        setHistory(data.data || []);
+      } else {
+        // Fallback
+        const saved = localStorage.getItem('route_history');
+        if (saved) setHistory(JSON.parse(saved));
+      }
+    } catch (e) {
+      console.error("Failed to load history from DB", e);
+      const saved = localStorage.getItem('route_history');
+      if (saved) setHistory(JSON.parse(saved));
+    }
+  };
 
   // Load theme and history on mount
   useEffect(() => {
@@ -250,17 +263,11 @@ function App() {
   }, [theme]);
 
   useEffect(() => {
-    const saved = localStorage.getItem('route_history');
-    if (saved) {
-      try {
-        setHistory(JSON.parse(saved));
-      } catch (e) {
-        console.error("Failed to load history", e);
-      }
-    }
+    // Try hitting a protected route to check auth on load, or just load history which handles 401s
+    fetchHistory();
   }, []);
 
-  const saveHistory = (updated: any[]) => {
+  const saveHistory = async (updated: any[]) => {
     setHistory(updated);
     localStorage.setItem('route_history', JSON.stringify(updated));
   };
@@ -269,8 +276,16 @@ function App() {
     saveHistory([]);
   };
 
-  const deleteHistoryItem = (id: string, e: React.MouseEvent) => {
+  const deleteHistoryItem = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    try {
+      if (user) {
+        const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8787';
+        await fetchWithAuth(`${API_BASE}/api/routes/${id}`, { method: 'DELETE' });
+      }
+    } catch(err) {
+      console.error(err);
+    }
     saveHistory(history.filter(item => item.id !== id));
   };
 
@@ -392,6 +407,24 @@ function App() {
             return updated;
           });
 
+          // Sync to DB
+          try {
+            if (user) {
+              const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8787';
+              fetchWithAuth(`${API_BASE}/api/routes`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  id: newHistoryItem.id,
+                  origin: newHistoryItem.origin,
+                  destination: newHistoryItem.dest
+                })
+              }).catch(console.error);
+            }
+          } catch(err) {
+            console.error(err);
+          }
+
         } catch (e: any) {
           console.error(e);
           alert(e.message || "Error calculating route. Please check the cities.");
@@ -416,11 +449,12 @@ function App() {
       const elapsed = timestamp - startTime;
       
       const t = Math.min(elapsed / ANIMATION_DURATION_MS, 1);
-      const easeOut = 1 - Math.pow(1 - t, 3); // Ease-out cubic
+      // Ease-in-out cubic
+      const easeInOut = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
-      setProgress(easeOut);
+      setProgress(easeInOut);
       
-      if (easeOut >= 1) {
+      if (t >= 1) {
         setProgress(1);
         setRouteState('visible');
         return;
@@ -618,7 +652,18 @@ function App() {
           {/* Custom Styled Leave Now Dropdown */}
           <div className="relative w-full">
             <button 
-              onClick={() => setShowDepartureDropdown(!showDepartureDropdown)}
+              ref={dropdownButtonRef}
+              onClick={() => {
+                if (!showDepartureDropdown && dropdownButtonRef.current) {
+                  const rect = dropdownButtonRef.current.getBoundingClientRect();
+                  setDropdownPosition({
+                    top: rect.bottom + 4,
+                    left: rect.left,
+                    width: rect.width
+                  });
+                }
+                setShowDepartureDropdown(!showDepartureDropdown);
+              }}
               className="flex items-center justify-between bg-white/5 rounded-xl px-3 py-2 border border-white/5 focus:border-white/20 transition-colors w-full text-xs text-white cursor-pointer select-none text-left"
             >
               <div className="flex items-center gap-3">
@@ -628,13 +673,20 @@ function App() {
               <span className="text-[8px] opacity-40">▼</span>
             </button>
             
-            {showDepartureDropdown && (
+            {showDepartureDropdown && createPortal(
               <>
                 <div 
-                  className="fixed inset-0 z-40" 
+                  className="fixed inset-0 z-[100]" 
                   onClick={() => setShowDepartureDropdown(false)}
                 />
-                <div className="absolute left-0 right-0 mt-1 dash-glass bg-zinc-950/95 border border-white/10 shadow-2xl rounded-xl py-1.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150 max-h-48 overflow-y-auto no-scrollbar pointer-events-auto">
+                <div 
+                  className="fixed mt-1 dash-glass bg-zinc-950/95 border border-white/10 shadow-2xl rounded-xl py-1.5 z-[101] animate-in fade-in slide-in-from-top-2 duration-150 max-h-48 overflow-y-auto no-scrollbar pointer-events-auto"
+                  style={{
+                    top: `${dropdownPosition.top}px`,
+                    left: `${dropdownPosition.left}px`,
+                    width: `${dropdownPosition.width}px`
+                  }}
+                >
                   {departureOptions.map((opt) => (
                     <button
                       key={opt.value}
@@ -650,7 +702,8 @@ function App() {
                     </button>
                   ))}
                 </div>
-              </>
+              </>,
+              document.body
             )}
           </div>
 
@@ -671,17 +724,17 @@ function App() {
         {routeData ? (
           <>
             {/* Card 2: Slim Status Row */}
-            <div className="dash-glass px-4 py-3 bg-zinc-950/85 border border-white/10 shadow-2xl rounded-2xl flex justify-between items-center shrink-0">
-              <div className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#10b981]" />
-                <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">Optimal Stops</span>
-                <span className="text-xs font-mono font-bold text-white">{routeData.segments.filter(s => s.weather.severity === 'safe').length}</span>
+            <div className="dash-glass px-4 py-2.5 bg-zinc-950/80 border border-white/10 shadow-2xl rounded-2xl flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-2.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">Safe Routes</span>
+                <span className="text-xs font-mono font-bold text-white ml-2">{routeData.segments.filter(s => s.weather.severity === 'safe').length}</span>
               </div>
               <div className="h-4 w-px bg-white/10" />
-              <div className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#ef4444]" />
-                <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">Risk Stops</span>
-                <span className="text-xs font-mono font-bold text-white">{routeData.segments.filter(s => s.weather.severity !== 'safe').length}</span>
+              <div className="flex items-center gap-2.5">
+                <span className="w-2 h-2 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">Risk Areas</span>
+                <span className="text-xs font-mono font-bold text-white ml-2">{routeData.segments.filter(s => s.weather.severity !== 'safe').length}</span>
               </div>
             </div>
 
@@ -726,51 +779,10 @@ function App() {
               })()}
             </div>
 
-            {/* Consolidated Conditions Summary (Moved from bottom-right) */}
-            <div className="dash-glass p-4 bg-zinc-950/85 border border-white/10 shadow-2xl rounded-2xl flex flex-col gap-3 shrink-0">
-              <div>
-                <div className="text-[10px] uppercase font-bold tracking-widest text-white/40 mb-1">Conditions Summary</div>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-2xl font-light text-white">{routeData.overallRisk}%</span>
-                  <span className="text-[9px] text-white/40 uppercase tracking-widest font-bold font-sans">Overall Route Threat</span>
-                </div>
-              </div>
-              
-              <table className="w-full mt-1 border-collapse">
-                <thead>
-                  <tr className="text-left text-[8px] uppercase tracking-wider text-white/40 font-bold">
-                    <th className="pb-1.5 font-bold">Checkpoint</th>
-                    <th className="pb-1.5 font-bold">Temp</th>
-                    <th className="pb-1.5 text-right font-bold">Risk Delta</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(() => {
-                    const originTemp = routeData.segments[0].weather.temperatureC;
-                    return routeData.segments.slice(1, 5).map((seg) => {
-                      const tempDelta = seg.weather.temperatureC - originTemp;
-                      const sign = tempDelta > 0 ? '+' : '';
-                      const deltaColor = tempDelta > 0 ? 'text-[#ef4444]' : tempDelta < 0 ? 'text-sky-400' : 'text-white/40';
-                      
-                      return (
-                        <tr key={seg.id} className="border-t border-white/5">
-                          <td className="py-2 text-[10px] text-white/80 font-semibold truncate max-w-[120px]">{seg.locationName.split('(')[0]}</td>
-                          <td className="py-2 text-[10px] font-mono text-white/90">{UNIT_CONFIG.formatTemp(seg.weather.temperatureC)}</td>
-                          <td className={`py-2 text-[10px] font-mono font-bold text-right ${deltaColor}`}>
-                            {tempDelta === 0 ? '0°C' : `${sign}${tempDelta}°C`}
-                          </td>
-                        </tr>
-                      );
-                    });
-                  })()}
-                </tbody>
-              </table>
-            </div>
-
             {/* Card 4: Weather Stops List */}
-            <div className="dash-glass p-4 bg-zinc-950/85 border border-white/10 shadow-2xl rounded-2xl flex flex-col">
+            <div className="dash-glass p-5 bg-zinc-950/80 border border-white/10 shadow-2xl rounded-2xl flex flex-col">
               <h3 className="text-dash-label font-bold mb-3">Weather Checkpoints</h3>
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto no-scrollbar">
                 {routeData.segments.map((seg, idx) => {
                   const Icon = IconMap[seg.weather.icon] || Sun;
                   const isSafe = seg.weather.severity === 'safe';
@@ -781,31 +793,31 @@ function App() {
                     <div 
                       key={seg.id}
                       onClick={() => setDetailedCheckpoint(seg)}
-                      className="bg-white/[0.02] border border-white/5 hover:bg-white/[0.06] hover:border-white/10 p-3 rounded-xl transition-all duration-150 cursor-pointer flex flex-col gap-2"
+                      className="bg-white/[0.02] border border-white/5 hover:bg-white/[0.06] hover:border-white/10 p-3 rounded-xl transition-all duration-150 cursor-pointer flex flex-col gap-2 shrink-0"
                     >
                       <div className="flex justify-between items-start gap-2">
-                        <div className="flex items-center gap-2.5">
-                          <div className={`p-1.5 rounded-lg bg-white/5 text-white ${!isSafe ? 'text-[#ef4444]' : 'text-white'}`}>
-                            <Icon size={14} weight="duotone" />
+                        <div className="flex items-center gap-3">
+                          <div className={`p-2 rounded-xl bg-white/5 text-white ${!isSafe ? 'text-rose-400' : 'text-white'}`}>
+                            <Icon size={16} weight="duotone" />
                           </div>
                           <div>
-                            <h4 className="text-[11px] font-bold text-white truncate max-w-[160px]">{seg.locationName.split('(')[0]}</h4>
-                            <div className="text-[8px] text-white/40 font-mono mt-0.5">
+                            <h4 className="text-[12px] font-bold text-white truncate max-w-[150px]">{seg.locationName.split('(')[0]}</h4>
+                            <div className="text-[9px] text-white/40 font-mono mt-0.5 uppercase tracking-wider">
                               {seg.timeFromStartMins === 0 ? 'Departure' : `+${seg.timeFromStartMins}m`} • ETA {new Date(seg.eta).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </div>
                           </div>
                         </div>
                         <div className="text-right flex flex-col items-end shrink-0">
-                          <span className="text-[11px] font-bold text-white font-mono">{UNIT_CONFIG.formatTemp(seg.weather.temperatureC)}</span>
+                          <span className="text-xs font-bold text-white font-mono">{UNIT_CONFIG.formatTemp(seg.weather.temperatureC)}</span>
                           <span className={`text-[8px] font-bold uppercase tracking-wider mt-0.5 
-                            ${isSafe ? 'text-[#10b981]' : 'text-[#ef4444]'}`}>
+                            ${isSafe ? 'text-emerald-400' : 'text-rose-400'}`}>
                             {seg.weather.condition.split(' ')[0]}
                           </span>
                         </div>
                       </div>
 
                       {/* Thin Progress bar */}
-                      <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
+                      <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden mt-1">
                         <div 
                           className="h-full bg-white transition-all duration-300"
                           style={{ 
@@ -817,6 +829,47 @@ function App() {
                   );
                 })}
               </div>
+            </div>
+
+            {/* Consolidated Conditions Summary (Moved to Bottom) */}
+            <div className="dash-glass p-5 bg-zinc-950/80 border border-white/10 shadow-2xl rounded-2xl flex flex-col gap-3 shrink-0">
+              <div>
+                <div className="text-[10px] uppercase font-bold tracking-widest text-white/40 mb-1">Schedule Offset & Risk</div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-light text-white">± {routeData.overallRisk}%</span>
+                  <span className="text-[9px] text-white/40 uppercase tracking-widest font-bold font-sans">Overall Variance</span>
+                </div>
+              </div>
+              
+              <table className="w-full mt-2 border-collapse">
+                <thead>
+                  <tr className="text-left text-[8px] uppercase tracking-wider text-white/40 font-bold border-b border-white/5">
+                    <th className="pb-2 font-bold">Location</th>
+                    <th className="pb-2 font-bold text-center">Temp</th>
+                    <th className="pb-2 text-right font-bold">Delta</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    const originTemp = routeData.segments[0].weather.temperatureC;
+                    return routeData.segments.slice(1, 5).map((seg) => {
+                      const tempDelta = seg.weather.temperatureC - originTemp;
+                      const sign = tempDelta > 0 ? '+' : '';
+                      const deltaColor = tempDelta > 0 ? 'text-rose-400' : tempDelta < 0 ? 'text-sky-400' : 'text-white/40';
+                      
+                      return (
+                        <tr key={seg.id} className="border-b border-white/5 last:border-0">
+                          <td className="py-2.5 text-[10px] text-white/80 font-semibold truncate max-w-[120px]">{seg.locationName.split('(')[0]}</td>
+                          <td className="py-2.5 text-[10px] font-mono text-white/90 text-center">{UNIT_CONFIG.formatTemp(seg.weather.temperatureC)}</td>
+                          <td className={`py-2.5 text-[10px] font-mono font-bold text-right ${deltaColor}`}>
+                            {tempDelta === 0 ? '0°C' : `${sign}${tempDelta}°C`}
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
+                </tbody>
+              </table>
             </div>
           </>
         ) : (
@@ -1054,10 +1107,27 @@ function App() {
         `}
       </style>
 
-      {/* Top right sharing triggers */}
-      {!isSnapshotMode && routeData && (
+      {/* Top right triggers */}
+      {!isSnapshotMode && (
         <div className="absolute top-6 right-6 z-20 flex gap-2 pointer-events-auto">
-          <div className="relative">
+          {user ? (
+            <button 
+              onClick={handleLogout}
+              className="dash-glass px-4 py-2 text-xs font-bold flex items-center gap-2 shadow-2xl hover:bg-white/10 transition-colors text-[var(--color-dash-text)] bg-zinc-950/80 border border-white/10 cursor-pointer"
+            >
+              Sign Out
+            </button>
+          ) : (
+            <button 
+              onClick={() => setShowAuthModal(true)}
+              className="dash-glass px-4 py-2 text-xs font-bold flex items-center gap-2 shadow-2xl hover:bg-white/10 transition-colors text-[var(--color-dash-text)] bg-zinc-950/80 border border-white/10 cursor-pointer"
+            >
+              Sign In
+            </button>
+          )}
+
+          {routeData && (
+            <div className="relative">
             <button 
               onClick={() => setShowShareMenu(!showShareMenu)}
               className="dash-glass px-4 py-2 text-xs font-bold flex items-center gap-2 shadow-2xl hover:bg-white/10 transition-colors text-[var(--color-dash-text)] bg-zinc-950/80 border border-white/10 cursor-pointer"
@@ -1092,6 +1162,68 @@ function App() {
               </div>
             )}
           </div>
+          )}
+        </div>
+      )}
+
+      {/* Auth Modal */}
+      {showAuthModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-auto">
+          <div className="dash-glass bg-zinc-950/90 border border-white/10 shadow-2xl rounded-2xl w-[90%] max-w-md p-6 animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold text-white tracking-tight">
+                {authMode === 'login' ? 'Sign In to RouteWeather' : 'Create Account'}
+              </h2>
+              <button onClick={() => setShowAuthModal(false)} className="text-white/50 hover:text-white transition-colors cursor-pointer">
+                <X size={20} />
+              </button>
+            </div>
+            
+            {authError && (
+              <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-lg">
+                {authError}
+              </div>
+            )}
+
+            <form onSubmit={handleAuth} className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-[var(--color-dash-label)] uppercase tracking-wider">Email</label>
+                <input 
+                  type="email" 
+                  value={authEmail}
+                  onChange={e => setAuthEmail(e.target.value)}
+                  className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[var(--color-accent)] transition-colors"
+                  required
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-[var(--color-dash-label)] uppercase tracking-wider">Password</label>
+                <input 
+                  type="password" 
+                  value={authPassword}
+                  onChange={e => setAuthPassword(e.target.value)}
+                  className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[var(--color-accent)] transition-colors"
+                  required
+                />
+              </div>
+              
+              <button 
+                type="submit"
+                className="w-full mt-2 bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white font-bold py-3 px-4 rounded-xl shadow-[0_0_15px_rgba(34,211,238,0.2)] hover:shadow-[0_0_25px_rgba(34,211,238,0.4)] transition-all cursor-pointer"
+              >
+                {authMode === 'login' ? 'Sign In' : 'Sign Up'}
+              </button>
+            </form>
+            
+            <div className="mt-6 text-center">
+              <button 
+                onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')}
+                className="text-xs text-[var(--color-dash-text)] hover:text-white transition-colors cursor-pointer"
+              >
+                {authMode === 'login' ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1108,62 +1240,67 @@ function App() {
           }}
           canvasContextAttributes={{ preserveDrawingBuffer: true }}
           style={{ width: '100%', height: '100%' }}
-          mapStyle={getHybridMapStyle() as any}
+          mapStyle={'https://tiles.openfreemap.org/styles/liberty' as any}
+          onLoad={onMapLoad}
         >
-          {/* Glowing Route Line Segments sliced along REAL road geometry, color-coded by weather */}
-          {(routeState === 'animating' || routeState === 'visible') && routeData && routeData.segments.slice(0, -1).map((seg, i) => {
-            const nextSeg = routeData.segments[i + 1];
+          {/* Glowing Route Line with Gradient */}
+          {(routeState === 'animating' || routeState === 'visible') && routeData && (() => {
+            const gradientExpression: any[] = ['interpolate', ['linear'], ['line-progress']];
             
-            const distToStart = seg.distanceFromStartMi;
-            const distToEnd = nextSeg.distanceFromStartMi;
-            const currentDist = progress * routeData.totalDistanceMi;
+            // Build base gradient stops from segments
+            const baseStops: {p: number, c: string}[] = [];
+            routeData.segments.forEach((seg) => {
+              const p = Math.max(0, Math.min(1, seg.distanceFromStartMi / routeData.totalDistanceMi));
+              baseStops.push({ p, c: getColorForSeverity(seg.weather.severity) });
+            });
 
-            let segmentGeoJsonCoords: number[][] = [];
+            // If we are drawing, inject transparent cutoff
+            let currentDrawColor = baseStops[0].c;
+            baseStops.forEach((stop, idx) => {
+              if (stop.p <= progress) {
+                if (idx > 0 && stop.p === baseStops[idx-1].p) {
+                   // Avoid duplicate keys
+                   gradientExpression.push(stop.p + 0.00001, stop.c);
+                } else {
+                   gradientExpression.push(stop.p, stop.c);
+                }
+                currentDrawColor = stop.c;
+              }
+            });
 
-            if (currentDist >= distToEnd) {
-              segmentGeoJsonCoords = getSlicedCoordinates(routeData.routeLine.geometry.coordinates, routeData.cumulativeDistances, distToStart, distToEnd);
-            } else if (currentDist > distToStart) {
-              segmentGeoJsonCoords = getSlicedCoordinates(routeData.routeLine.geometry.coordinates, routeData.cumulativeDistances, distToStart, currentDist);
-            } else {
-              return null;
+            if (progress < 1) {
+              const cutoff = Math.max(0, Math.min(1, progress));
+              const nextCutoff = Math.min(1, cutoff + 0.0001);
+              gradientExpression.push(cutoff, currentDrawColor);
+              gradientExpression.push(nextCutoff, 'rgba(0,0,0,0)');
+              if (nextCutoff < 1) {
+                gradientExpression.push(1, 'rgba(0,0,0,0)');
+              }
             }
 
-            const segmentGeoJson = {
-              type: 'FeatureCollection',
-              features: [
-                {
-                  type: 'Feature',
-                  geometry: {
-                    type: 'LineString',
-                    coordinates: segmentGeoJsonCoords
-                  }
-                }
-              ]
-            };
-
             return (
-              <Source key={`source-${seg.id}`} id={`route-${seg.id}`} type="geojson" data={segmentGeoJson as any}>
-                {/* Weather-based Glow Underlay */}
+              <Source id="main-route" type="geojson" data={routeData.routeLine} lineMetrics={true}>
                 <Layer
-                  id={`route-line-${seg.id}`}
+                  id="route-glow"
                   type="line"
                   paint={{
-                    'line-color': getSegmentColor(seg),
-                    'line-width': 8,
-                    'line-opacity': 0.25,
-                    'line-blur': 3
+                    'line-color': 'transparent', // Fallback
+                    'line-gradient': gradientExpression as any,
+                    'line-width': 12,
+                    'line-opacity': 0.6,
+                    'line-blur': 8
                   }}
                   layout={{
                     'line-cap': 'round',
                     'line-join': 'round'
                   }}
                 />
-                {/* Core Color-Coded Route Line */}
                 <Layer
-                  id={`route-line-core-${seg.id}`}
+                  id="route-core"
                   type="line"
                   paint={{
-                    'line-color': getSegmentColor(seg),
+                    'line-color': 'transparent', // Fallback
+                    'line-gradient': gradientExpression as any,
                     'line-width': 4
                   }}
                   layout={{
@@ -1173,7 +1310,7 @@ function App() {
                 />
               </Source>
             );
-          })}
+          })()}
 
           {/* Vehicle Indicator */}
           {!isSnapshotMode && routeData && (routeState === 'animating' || routeState === 'visible') && (() => {
@@ -1221,43 +1358,37 @@ function App() {
             if (!isVisible) return null;
 
             const isHovered = hoveredMarkerId === seg.id;
+            const Icon = IconMap[seg.weather.icon] || Sun;
 
             return (
               <Marker
                 key={`marker-${seg.id}`}
                 longitude={seg.coordinates[0]}
                 latitude={seg.coordinates[1]}
-                anchor="bottom"
+                anchor="center"
                 style={{ zIndex: isHovered && !isSnapshotMode ? 50 : 30 }}
               >
                 <div className="relative">
                   {/* Contextual Tooltip */}
                   {!isSnapshotMode && isHovered && (
-                    <div className="absolute bottom-full mb-3.5 -translate-x-1/2 left-1/2 flex flex-col items-center animate-in fade-in zoom-in-95 duration-150 pointer-events-none z-50">
-                      <div className="dash-glass px-4 py-2.5 shadow-2xl text-left rounded-xl bg-zinc-950/90 border border-white/10 w-44">
-                        <div className="text-[10px] font-bold text-white/50 uppercase tracking-widest truncate">{seg.locationName.split('(')[0]}</div>
-                        <div className="flex justify-between items-baseline mt-1.5">
-                          <span className="text-lg font-light text-white leading-none font-mono">{UNIT_CONFIG.formatTemp(seg.weather.temperatureC)}</span>
-                          <span className="text-[8px] font-bold uppercase tracking-wider text-white/40">{seg.weather.condition.split(' ')[0]}</span>
-                        </div>
+                    <div className="absolute bottom-full mb-3 -translate-x-1/2 left-1/2 flex flex-col items-center animate-in fade-in zoom-in-95 duration-150 pointer-events-none z-50">
+                      <div className="dash-glass px-4 py-3 shadow-2xl text-center rounded-2xl bg-zinc-950/80 border border-white/10 backdrop-blur-xl min-w-[120px]">
+                        <div className="text-[28px] font-light text-white leading-none font-mono mb-1">{UNIT_CONFIG.formatTemp(seg.weather.temperatureC)}</div>
+                        <div className="text-[9px] font-bold text-white/50 uppercase tracking-widest">{seg.locationName.split('(')[0]}</div>
                       </div>
                     </div>
                   )}
 
-                  {/* Marker Pin */}
+                  {/* Enhanced Weather Icon Marker */}
                   <div 
-                    onMouseEnter={() => !isSnapshotMode && setHoveredMarkerId(seg.id)}
-                    onMouseLeave={() => !isSnapshotMode && setHoveredMarkerId(null)}
-                    onClick={(e) => {
-                      if (isSnapshotMode) return;
-                      e.stopPropagation();
+                    className={`w-7 h-7 rounded-full flex items-center justify-center border text-white transition-transform duration-200 cursor-pointer ${getIconColorClass(seg.weather.severity)} ${isHovered && !isSnapshotMode ? 'scale-125' : 'scale-100'} animate-in fade-in zoom-in`}
+                    onMouseEnter={() => setHoveredMarkerId(seg.id)}
+                    onMouseLeave={() => setHoveredMarkerId(null)}
+                    onClick={() => {
                       setDetailedCheckpoint(seg);
                     }}
-                    className={`flex items-center justify-center transition-transform duration-200
-                      ${isHovered && !isSnapshotMode ? 'scale-125' : (!isSnapshotMode ? 'hover:scale-115 cursor-pointer' : '')}
-                      animate-in fade-in zoom-in`}
                   >
-                    <div className="w-3.5 h-3.5 rounded-full bg-white border-2 border-zinc-950 shadow-[0_0_8px_rgba(0,0,0,0.6)] flex items-center justify-center transition-colors animate-gentle-pulse" />
+                    <Icon size={14} weight="fill" />
                   </div>
                 </div>
               </Marker>
@@ -1266,58 +1397,30 @@ function App() {
         </Map>
       </div>
 
-      {/* Unified Sidebar Panel */}
+      {/* Stacked Left Panel with Top Navigation */}
       {!isSnapshotMode && !isSidebarCollapsed && (
-        <div className="absolute top-6 left-6 bottom-6 w-[420px] max-w-[calc(100vw-3rem)] z-20 flex flex-col pointer-events-none select-none animate-in fade-in slide-in-from-left-4 duration-300 shadow-2xl rounded-2xl border border-white/10 bg-zinc-950/85 backdrop-blur-xl overflow-hidden">
-          {/* Header */}
-          <div className="p-4 border-b border-white/10 flex items-center justify-between shrink-0 pointer-events-auto">
-            <div className="flex items-center gap-2 select-none">
-              <Brain size={18} weight="fill" className="text-white" />
-              <span className="font-bold tracking-tight text-white text-sm">RouteWeather</span>
+        <div className="absolute top-6 left-6 bottom-6 w-[420px] max-w-[calc(100vw-3rem)] z-20 flex flex-col pointer-events-none select-none animate-in fade-in slide-in-from-left-4 duration-300">
+          
+          {/* Top Navigation Pill (Moved from center to top-left) */}
+          <div className="self-start mb-6 z-30 dash-glass rounded-full px-2 py-1.5 flex items-center gap-2 bg-zinc-950/80 backdrop-blur-xl border border-white/10 shadow-2xl pointer-events-auto">
+            <div className="flex items-center gap-2 pl-3 pr-4 border-r border-white/10 select-none">
+              <Brain size={16} weight="fill" className="text-white" />
             </div>
-            <div className="flex items-center gap-1.5">
-              {/* Theme Toggle Button */}
-              <button 
-                onClick={() => {
-                  const nextTheme = theme === 'dark' ? 'night' : theme === 'night' ? 'light' : 'dark';
-                  setTheme(nextTheme);
-                  localStorage.setItem('theme', nextTheme);
-                }}
-                className="p-1.5 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors cursor-pointer"
-                title={`Theme: ${theme}`}
-              >
-                <Sun size={16} />
-              </button>
-              
-              {/* Collapse Button */}
-              <button 
-                onClick={() => setIsSidebarCollapsed(true)}
-                className="p-1.5 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors cursor-pointer"
-                title="Collapse Sidebar"
-              >
-                <CaretLeft size={16} />
-              </button>
-            </div>
-          </div>
-
-          {/* Navigation Tabs */}
-          <div className="flex border-b border-white/10 shrink-0 bg-white/[0.02] pointer-events-auto">
             {(['route-weather', 'history', 'ai-insights'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`flex-1 py-3 text-[10px] font-bold uppercase tracking-wider text-center border-b-2 transition-all cursor-pointer select-none
+                className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-full transition-all cursor-pointer select-none
                   ${activeTab === tab 
-                    ? 'border-white text-white bg-white/[0.02]' 
-                    : 'border-transparent text-white/40 hover:text-white hover:bg-white/[0.01]'}`}
+                    ? 'bg-white text-zinc-950' 
+                    : 'text-white/40 hover:text-white'}`}
               >
                 {tab === 'route-weather' ? 'Route Planner' : tab === 'ai-insights' ? 'AI Insights' : 'History'}
               </button>
             ))}
           </div>
 
-          {/* Scrollable Content Area */}
-          <div className="flex-1 overflow-y-auto no-scrollbar p-4 flex flex-col gap-4 min-h-0 pointer-events-auto">
+          <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-4 pointer-events-auto pb-6">
             {activeTab === 'route-weather' && renderRouteWeatherTab()}
             {activeTab === 'history' && renderHistoryTab()}
             {activeTab === 'ai-insights' && renderAIInsightsTab()}
@@ -1329,27 +1432,29 @@ function App() {
       {!isSnapshotMode && isSidebarCollapsed && (
         <button 
           onClick={() => setIsSidebarCollapsed(false)}
-          className="absolute top-6 left-6 z-20 w-10 h-10 dash-glass flex items-center justify-center shadow-2xl hover:bg-white/15 transition-all active:scale-95 text-white cursor-pointer animate-in fade-in bg-zinc-950/80 border border-white/10"
+          className="absolute top-6 left-6 z-20 w-10 h-10 dash-glass flex items-center justify-center shadow-2xl hover:bg-white/15 transition-all active:scale-95 text-white cursor-pointer animate-in fade-in bg-zinc-950/80 border border-white/10 pointer-events-auto"
           title="Expand Sidebar"
         >
           <CaretRight size={18} />
         </button>
       )}
 
+
+
       {/* Zoom controls on map */}
       {!isSnapshotMode && (
-        <div className="absolute bottom-6 left-[450px] z-10 flex items-center gap-1.5 p-1 rounded-full dash-glass bg-zinc-950/80 border border-white/10 pointer-events-auto shadow-2xl">
+        <div className="absolute bottom-6 right-6 z-10 flex flex-col items-center gap-1.5 p-1.5 rounded-full dash-glass bg-zinc-950/80 border border-white/10 pointer-events-auto shadow-2xl backdrop-blur-xl">
           <button 
             onClick={() => mapRef.current?.zoomIn()}
-            className="w-7 h-7 rounded-full flex items-center justify-center text-white/75 hover:text-white hover:bg-white/10 transition-colors cursor-pointer text-xs font-bold"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-white/75 hover:text-white hover:bg-white/10 transition-colors cursor-pointer text-sm font-bold"
             title="Zoom In"
           >
             +
           </button>
-          <div className="w-px h-3 bg-white/10" />
+          <div className="w-3 h-px bg-white/10" />
           <button 
             onClick={() => mapRef.current?.zoomOut()}
-            className="w-7 h-7 rounded-full flex items-center justify-center text-white/75 hover:text-white hover:bg-white/10 transition-colors cursor-pointer text-xs font-bold"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-white/75 hover:text-white hover:bg-white/10 transition-colors cursor-pointer text-sm font-bold"
             title="Zoom Out"
           >
             −
