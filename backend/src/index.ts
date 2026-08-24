@@ -1168,10 +1168,9 @@ export default {
         
         const routeData = await fetchRoute(originGeo.lng, originGeo.lat, destGeo.lng, destGeo.lat);
         const coords = routeData.geometry.coordinates;
-        const lats = coords.map((c: number[]) => c[1]).join(',');
-        const lngs = coords.map((c: number[]) => c[0]).join(',');
         
         // Sample just the start, mid, and end for quick background check
+
         const len = coords.length;
         const sampleCoords = [
           coords[0],
